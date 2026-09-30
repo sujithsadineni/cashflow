@@ -379,24 +379,40 @@ function SavedLedger({ year, incomeByMonth, spendByMonth, ytdIncome, ytdSpend, y
 
   return (
     <div className="mt-3 overflow-hidden rounded-lg border border-rule text-xs">
-      <div className={`${LEDGER_GRID} items-center bg-raised py-2 font-mono font-medium tnum`}>
-        <span className="pl-3 font-sans font-normal text-muted">Saved</span>
-        {months.map((m) => (
-          <span
-            key={m.key}
-            className={`text-center ${m.saved == null ? '' : m.saved < 0 ? 'text-vivid-loss' : 'text-vivid-green'}`}
-          >
-            {m.saved == null ? '' : formatMoney(m.saved, { showSign: true, compact: true })}
-          </span>
-        ))}
-      </div>
-      <div className={`${LEDGER_GRID} items-center bg-band py-2 font-mono font-medium tnum`}>
-        <span className="pl-3 font-sans font-normal text-muted">Kept</span>
-        {months.map((m) => (
-          <span key={m.key} className={`text-center ${m.kept != null && m.kept < 0 ? 'text-vivid-loss' : 'text-ink'}`}>
-            {m.saved == null ? '' : m.kept == null ? <span className="text-faint">—</span> : `${m.kept}%`}
-          </span>
-        ))}
+      {/* Phones: twelve months can't share ~300px, so the two month rows scroll
+          sideways (≈3rem a month) with their labels pinned on the left. From
+          `md` up there's no minimum and the columns line up under the chart. */}
+      <div className="overflow-x-auto">
+        <div className="min-w-[40rem] md:min-w-0">
+          {/* Phones only: once these rows scroll, the chart's month labels above no longer line up. */}
+          <div className={`${LEDGER_GRID} border-b border-rule bg-raised py-1.5 text-[10px] text-faint md:hidden`}>
+            <span className="sticky left-0 z-[1] bg-raised" />
+            {months.map((m) => (
+              <span key={m.key} className="text-center">
+                {new Date(`${m.key}-01T00:00:00`).toLocaleString('en-US', { month: 'short' })}
+              </span>
+            ))}
+          </div>
+          <div className={`${LEDGER_GRID} items-center bg-raised py-2 font-mono font-medium tnum`}>
+            <span className="sticky left-0 z-[1] bg-raised pl-3 font-sans font-normal text-muted">Saved</span>
+            {months.map((m) => (
+              <span
+                key={m.key}
+                className={`text-center ${m.saved == null ? '' : m.saved < 0 ? 'text-vivid-loss' : 'text-vivid-green'}`}
+              >
+                {m.saved == null ? '' : formatMoney(m.saved, { showSign: true, compact: true })}
+              </span>
+            ))}
+          </div>
+          <div className={`${LEDGER_GRID} items-center bg-band py-2 font-mono font-medium tnum`}>
+            <span className="sticky left-0 z-[1] bg-band pl-3 font-sans font-normal text-muted">Kept</span>
+            {months.map((m) => (
+              <span key={m.key} className={`text-center ${m.kept != null && m.kept < 0 ? 'text-vivid-loss' : 'text-ink'}`}>
+                {m.saved == null ? '' : m.kept == null ? <span className="text-faint">—</span> : `${m.kept}%`}
+              </span>
+            ))}
+          </div>
+        </div>
       </div>
       <div className="flex items-center justify-between border-t border-rule bg-raised px-3 py-2.5">
         <span className="text-muted">{year} so far</span>
