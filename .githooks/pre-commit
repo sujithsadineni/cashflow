@@ -1,0 +1,5 @@
+#!/bin/sh
+# Blocks a commit that would put personal data, a secret, or a statement
+# file into anything the public repo receives. Setup (once per clone):
+#   git config core.hooksPath .githooks
+exec node "$(git rev-parse --show-toplevel)/scripts/leak-scan.mjs" --staged

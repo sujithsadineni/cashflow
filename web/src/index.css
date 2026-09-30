@@ -1,0 +1,245 @@
+@import "tailwindcss";
+
+/* ============================================================
+   Design tokens.
+
+   The reference material here is greenbar ledger paper -- the
+   pale banded accounting stock that columns of figures have been
+   printed on for a century. That's the vernacular of the thing
+   we're building, so it's where the palette comes from rather
+   than from a generic dashboard template.
+
+   Everything below is a Tailwind v4 theme token, which means
+   --color-ink becomes the utility class `text-ink`, `bg-ink`,
+   `border-ink` and so on automatically.
+   ============================================================ */
+
+@theme {
+  /* Surfaces */
+  --color-paper:    #FBFCFA;   /* the page -- near white, faint green cast */
+  --color-band:     #EDF2EC;   /* the greenbar tint, for alternating rows */
+  --color-raised:   #FFFFFF;   /* panels that sit above the page */
+
+  /* Ink */
+  --color-ink:      #1B2420;   /* body text -- a deep green-black, not pure #000 */
+  --color-muted:    #6B7670;   /* labels, secondary text */
+  --color-faint:    #98A199;   /* timestamps, disabled */
+
+  /* Rules and edges */
+  --color-rule:     #D8DED6;
+  --color-rule-str: #B9C2B6;   /* stronger rule, for table headers */
+
+  /* Money direction. Spend and earn mean exactly one thing,
+     everywhere in the app: money out, money in. Never repurposed
+     for anything else. */
+  --color-spend:    #8C2F1F;   /* oxblood -- money out */
+  --color-earn:     #2F6B4F;   /* pine -- money in, cashback */
+
+  /* Informational accents -- for dashboard concepts that are
+     neither "out" nor "in" (savings, a secondary metric). Same
+     muted family as the card-carousel palette, so a "Savings"
+     tile and a customized card read as the same design language.
+     These never mean money direction; spend/earn keep sole claim
+     to that. */
+  --color-info:     #3B6B7A;   /* teal */
+  --color-accent2:  #6B4B8A;   /* plum */
+
+  /* Status */
+  --color-warn:     #8A6A1F;
+
+  /* Vivid design (Settings → Design, D135/D136). Only components
+     rendering the Vivid look use these; Classic never does. Card
+     identity colors for icon tiles, tints (via /10 opacity) and
+     spend-mix slices. Money direction in Vivid is vivid-green for
+     in and vivid-loss for out — a deeper red than vivid-red,
+     because vivid-red on white is too light for small text. */
+  --color-vivid-green:  #1F8A57;
+  --color-vivid-red:    #E5484D;
+  --color-vivid-loss:   #B23A26;
+  --color-vivid-amber:  #F5A524;
+  --color-vivid-teal:   #12A594;
+  --color-vivid-blue:   #3E63DD;
+  --color-vivid-purple: #8E4EC6;
+  --color-vivid-pink:   #E93D82;
+
+  /* Type. IBM Plex: it has genuine tabular figures and a
+     slightly technical cast that suits a ledger. One family
+     plus its mono sibling -- clearly distinct, still cohesive. */
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", monospace;
+}
+
+/* Vivid (D141): rather than touch every page's text-spend/bg-earn/
+   bg-warn classes one by one, the design picker sets
+   data-design="vivid" on <html> (design-context.jsx) and this rule
+   repoints the five shared color variables every Tailwind utility
+   already reads. One rule, every page: amounts, statement calendars,
+   paid/remaining cells, status dots. Classic never sets the attribute,
+   so it keeps @theme's originals. The warn amber is a darker one than
+   vivid-amber so white text on it (calendar cells) stays legible. */
+:root[data-design="vivid"] {
+  --color-spend:   #B23A26;
+  --color-earn:    #1F8A57;
+  --color-warn:    #B7791F;
+  --color-info:    #12A594;
+  --color-accent2: #8E4EC6;
+}
+
+/* ============================================================
+   Base
+   ============================================================ */
+
+html {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  font-family: var(--font-sans);
+  margin: 0;
+}
+
+/* The single most important rule in this stylesheet.
+
+   Tabular figures make every digit the same width, so a column
+   of amounts lines up on the decimal instead of wobbling. In a
+   money app this is the difference between scannable and not.
+   Almost no web app bothers. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* A one-shot light sweep across an icon badge on hover — not an
+   idle/looping animation, deliberately: this app pulls back toward
+   quiet every time something starts moving on its own (D32, D35,
+   D49), and a badge that's never animating until you actually
+   interact with it costs nothing on a page you check daily. The
+   sweep resets to its starting position when the pointer leaves, so
+   hovering again always replays it.
+
+   Triggered by `.group:hover`, not `.icon-spark:hover` — a real bug
+   caught from a screenshot, not a browser: the badge is a 24px
+   circle, and requiring the pointer to be exactly over it meant the
+   effect almost never fired in practice, since hovering the card
+   anywhere else (its label, its number, its whole surface) did
+   nothing. `.group` is the literal class Tailwind's own `group`
+   utility puts on the card's wrapper — this hooks the same ancestor
+   hover state, just from plain CSS instead of a Tailwind variant. */
+.icon-spark {
+  position: relative;
+  overflow: hidden;
+}
+.icon-spark::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent 30%, rgb(255 255 255 / 0.75) 50%, transparent 70%);
+  transform: translateX(-130%);
+  transition: transform 0.5s ease;
+}
+.group:hover .icon-spark::after {
+  transform: translateX(130%);
+}
+
+/* The top-to-bottom sweep, chosen (of two options shown side by
+   side) over a crisp line: a soft tint the same hue as the card's own
+   accent bar, washing down from the top edge and fading out before
+   the bottom. `currentColor` picks up whichever text-earn/text-spend
+   class the card passes in, so one rule serves every tone. Hover-only
+   and resets on pointer-leave, same restraint as the icon spark. */
+.card-sweep {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 55%;
+  top: -60%;
+  background: linear-gradient(to bottom, color-mix(in srgb, currentColor 16%, transparent), transparent);
+  transition: top 0.65s ease;
+  pointer-events: none;
+}
+.group:hover .card-sweep {
+  top: 100%;
+}
+
+/* The Welcome page's one-time entrance: every section (wordmark,
+   headline, each subtext word, each logo card, the buttons) uses this
+   same drop-and-fade, timed in sequence purely via each element's own
+   inline animation-delay — one animation vocabulary, not a different
+   effect per section. Plays once on mount, not a loop, same restraint
+   as icon-spark/card-sweep above, and respects prefers-reduced-motion
+   through the existing global rule below rather than a second one
+   here. */
+@keyframes drop-in {
+  from { opacity: 0; transform: translateY(var(--dy, -18px)); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-drop-in {
+  animation: drop-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+/* The Welcome page's cards join in from whichever direction they're
+   told to — a --fx/--fy pair set per element in Welcome.jsx, rather
+   than a separate keyframe per direction. Used for the four feature
+   cards (each from a different edge) and the subtitle's two halves
+   (converging from opposite sides). */
+@keyframes join-in {
+  from { opacity: 0; transform: translate(var(--fx, 0), var(--fy, 0)); }
+  to   { opacity: 1; transform: translate(0, 0); }
+}
+.animate-join-in {
+  animation: join-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+/* The finale — just the button — gets a little more punch than the
+   plain fades above: a slight overshoot on the way in, the one place
+   this page allows itself a bounce rather than a clean ease-out. */
+@keyframes pop-in {
+  from { opacity: 0; transform: scale(0.85); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.animate-pop-in {
+  animation: pop-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+}
+
+/* A bar-chart row growing in from zero — MerchantHistory's by-month
+   bars, each with its own small inline animation-delay for a quick
+   cascade (same sequencing trick as join-in above, just a scale
+   instead of a position). transform, not width, so it animates the
+   paint instead of the layout the percentage width still sets. */
+@keyframes bar-grow {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+.animate-bar-grow {
+  transform-origin: left;
+  animation: bar-grow 0.5s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+/* An indeterminate upload/parse progress bar — a quiet sliding
+   highlight, not a spinner or a percentage we can't actually measure
+   (statement parsing has no reliable progress signal to report). Used
+   under the two upload boxes on the Statements page while a file is
+   being read or parsed. */
+@keyframes upload-progress {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(220%); }
+}
+.animate-upload-progress {
+  animation: upload-progress 1.1s ease-in-out infinite;
+}
+
+/* Visible keyboard focus, everywhere, without having to think
+   about it per component. */
+:focus-visible {
+  outline: 2px solid var(--color-earn);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

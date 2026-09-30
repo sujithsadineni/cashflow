@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+
+# Secrets — .env.example is the only env file that belongs in git
+.env
+.env.*
+*.env
+!.env.example
+*.pem
+*.key
+
+# Logs
+*.log
+npm-debug.log*
+
+# macOS
+.DS_Store
+
+# Build output
+dist/
+build/
+coverage/
+
+# Personal, never in git: the leak-scan blocklist (names, last-4s,
+# addresses) and anything produced for posting about the app
+.private/
+linkedin-post/
+brag-output/
+brag-output-*/
+*.mp4
+*.mov
+
+# Tool output
+graphify-out/
+.claude/settings.local.json
+
+# Never commit real financial data
+data/
+uploads/
+statements/
+*.pdf
+*.csv
+*.ofx
+*.qfx
+*.xls
+*.xlsx
+*.sqlite
+*.db

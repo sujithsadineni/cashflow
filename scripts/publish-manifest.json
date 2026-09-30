@@ -1,0 +1,33 @@
+{
+  "_comment": "What goes to the public repo. scripts/leak-scan.mjs scans exactly these paths; scripts/publish.mjs copies exactly these, then publish/overlay/ on top (e.g. the public CLAUDE.md). Everything else (docs/, api/scripts/, the private CLAUDE.md, .claude/) stays in the private repo.",
+  "include": [
+    "api/src/**",
+    "api/demo/**",
+    "api/package.json",
+    "api/package-lock.json",
+    "db/**",
+    "web/**",
+    "scripts/leak-scan.mjs",
+    "scripts/leak-scan.test.mjs",
+    "scripts/publish-manifest.json",
+    ".githooks/**",
+    ".gitignore",
+    "README.md",
+    "LICENSE",
+    "AGENTS.md",
+    "guide/**",
+    "api/.env.example",
+    "publish/overlay/**",
+    "publish/overlay/.github/**",
+    "web/.gitignore"
+  ],
+  "exclude": [
+    "web/dist/**",
+    "**/node_modules/**"
+  ],
+  "allow": [
+    "github.com/sujithsadineni",
+    "sujithsadineni.github.io"
+  ],
+  "_comment_globs": "`**` does not match dot-files or dot-folders (.github, .gitignore) \u2014 list those explicitly."
+}
