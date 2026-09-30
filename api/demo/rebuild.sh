@@ -8,7 +8,7 @@ set -e
 cd "$(dirname "$0")/../.."
 CHROME="${CHROME:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
 TMP="$(mktemp -d)"
-cleanup() { kill $API_PID $WEB_PID $CHROME_PID 2>/dev/null || true; rm -rf "$TMP"; }
+cleanup() { kill $API_PID $WEB_PID $CHROME_PID 2>/dev/null || true; wait 2>/dev/null; rm -rf "$TMP"; }
 trap cleanup EXIT
 
 dropdb --if-exists cashflow_demo

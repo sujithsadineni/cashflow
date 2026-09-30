@@ -195,6 +195,8 @@ export const api = {
                     ...(includeClosed ? { include_closed: 'true' } : {}),
                     ...(month ? { month } : {}),
                   })}`),
+    // Month-by-month paid/remaining for one loan — LoanScheduleDetail.
+    history:    (id) => request(`/loans/${id}/history`),
     create:     (data) => post('/loans', data),
     update:     (id, data) =>
                   request(`/loans/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),

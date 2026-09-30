@@ -141,6 +141,9 @@ for (const a of accounts) {
     responses[`GET ${path}`] ??= await api(path);
   }
 }
+// Each loan's month-by-month drill-down, and the Loans list for every month.
+for (const l of await api('/loans')) responses[`GET /loans/${l.id}/history`] ??= await api(`/loans/${l.id}/history`);
+for (const month of MONTHS) responses[`GET /loans?month=${month}`] ??= await api(`/loans?month=${month}`);
 for (const s of await api('/recurring?include_ended=true')) responses[`GET /recurring/${s.id}/transactions`] ??= await api(`/recurring/${s.id}/transactions`);
 
 mkdirSync(new URL('.', `file://${OUT}`).pathname, { recursive: true });

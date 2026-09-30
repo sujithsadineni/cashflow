@@ -37,7 +37,7 @@ const pad = (n) => String(n).padStart(2, '0');
 const day = (y, m, d) => `${y}-${pad(m)}-${pad(Math.min(d, new Date(y, m, 0).getDate()))}`;
 
 // ---- Reference data ---------------------------------------------------
-const EXTRA_CATEGORIES = ['Investment', 'Zelle', 'Costco', 'Refund', 'Cashback', 'EV Charging', 'Card Payment', 'Salary', 'Loan', 'Interest', 'Annual Fee'];
+const EXTRA_CATEGORIES = ['Investment', 'Zelle', 'Costco', 'Refund', 'Cashback', 'EV Charging', 'Card Payment', 'Salary', 'Loan', 'Interest', 'Annual Fee', 'Balance Transfer'];
 for (const name of EXTRA_CATEGORIES) await q('INSERT INTO category (name, sort_order) VALUES ($1, 200) ON CONFLICT (name) DO NOTHING', [name]);
 await q("UPDATE category SET icon_key = 'trend-up' WHERE name = 'Investment'");
 const cat = Object.fromEntries((await q('SELECT id, name FROM category')).rows.map((r) => [r.name, r.id]));
@@ -58,6 +58,8 @@ const A = {
   samChecking: await account(sam, 'Adv SafeBalance Banking', 'Bank of America', 'CHECKING', '4321', 'SAM RIVERA'),
   bofaCard: await account(sam, 'Customized Cash Rewards', 'Bank of America', 'CREDIT_CARD', '8642', 'SAM RIVERA'),
   bilt: await account(sam, 'Bilt Blue Card', 'Bilt', 'CREDIT_CARD', null, 'Sam Rivera'),
+  // Holds nothing but a 0% balance transfer, paid down monthly — the loan below links to it.
+  bankAmericard: await account(sam, 'BankAmericard', 'Bank of America', 'CREDIT_CARD', '9753', 'SAM RIVERA'),
 };
 const CARDS = [A.freedom, A.amex, A.bofaCard, A.bilt];
 const CHECKING_OF = { [A.freedom]: A.alexChecking, [A.amex]: A.alexChecking, [A.bofaCard]: A.samChecking, [A.bilt]: A.samChecking };
@@ -139,6 +141,14 @@ for (const [y, m] of MONTHS) {
   // Investing and the car loan.
   add(A.alexChecking, day(y, m, 2), 'ROBINHOOD DES:DEBITS INDN:ALEX J MORGAN', 'Robinhood', -50000, 'Investment', 'transfer');
   add(A.alexChecking, day(y, m, 13), 'WELLS FARGO AUTO DRAFT', 'Wells Fargo', -54000, 'Loan', 'payment');
+
+  // The balance transfer: $4,200 moved onto the BankAmericard in March 2026,
+  // then $350 a month from Sam's checking.
+  if (key === '2026-03') add(A.bankAmericard, day(y, m, 2), 'BALANCE TRANSFER', 'Bank of America', -420000, 'Balance Transfer', 'transfer');
+  if (key > '2026-03') {
+    add(A.bankAmericard, day(y, m, 8), 'PAYMENT - THANK YOU', null, 35000, 'Loan', 'payment');
+    add(A.samChecking, day(y, m, 8), 'BANKAMERICARD PAYMENT', 'Bank of America', -35000, 'Loan', 'payment');
+  }
 }
 
 // Card bills: each month's card spend, paid from checking early the next month.
@@ -163,13 +173,16 @@ for (const t of txns) {
 }
 
 // ---- Statements: one per account per month; Bilt's last one left missing ----
-for (const card of [...CARDS, A.alexChecking, A.samChecking]) {
+// On a card, a positive closing balance is money owed (what loans read).
+let transferOwed = 0;
+for (const card of [...CARDS, A.bankAmericard, A.alexChecking, A.samChecking]) {
   for (const [y, m] of MONTHS) {
     if (card === A.bilt && y === 2026 && m === 9) continue; // shows as "Missing" on the Cards calendar
+    if (card === A.bankAmericard && `${y}-${pad(m)}` < '2026-03') continue; // opened for the transfer
     const start = day(y, m, 1);
     const end = day(y, m, 31);
     const { rows } = await q(
-      `SELECT COALESCE(SUM(amount_cents) FILTER (WHERE txn_type = 'purchase'), 0)::int AS spend,
+      `SELECT COALESCE(SUM(amount_cents) FILTER (WHERE txn_type IN ('purchase', 'transfer')), 0)::int AS spend,
               COALESCE(SUM(amount_cents) FILTER (WHERE txn_type = 'payment'), 0)::int AS paid,
               COALESCE(SUM(amount_cents) FILTER (WHERE txn_type = 'cashback'), 0)::int AS cashback
          FROM transaction WHERE account_id = $1 AND posted_date BETWEEN $2 AND $3`,
@@ -179,20 +192,22 @@ for (const card of [...CARDS, A.alexChecking, A.samChecking]) {
     await q(
       `INSERT INTO statement (account_id, period_start, period_end, total_spend_cents, total_payments_cents, cashback_earned_cents, opening_balance_cents, closing_balance_cents)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [card, start, end, r.spend, r.paid, r.cashback || null, -r.paid, r.spend],
+      card === A.bankAmericard
+        ? [card, start, end, 0, r.paid, null, transferOwed, (transferOwed += -r.spend - r.paid)]
+        : [card, start, end, r.spend, r.paid, r.cashback || null, r.paid, -r.spend],
     );
   }
 }
 
 // ---- Loans ---------------------------------------------------------------
 await q(
-  `INSERT INTO loan (name, lender, linked_account_id, term_months, start_date, current_balance_cents, deadline_date, monthly_payment_cents, loan_type)
-   VALUES ('Model 3', 'Wells Fargo', $1, 60, '2024-04-13', 1890000, '2029-04-13', 54000, 'car'),
-          ('0% balance transfer', 'Bank of America', $2, NULL, '2026-03-01', 420000, '2027-03-01', NULL, 'balance_transfer')`,
-  [A.alexChecking, A.bofaCard],
+  `INSERT INTO loan (name, lender, linked_account_id, term_months, start_date, current_balance_cents, deadline_date, monthly_payment_cents, loan_type, created_at)
+   VALUES ('Model 3', 'Wells Fargo', NULL, 60, '2024-04-13', 1890000, '2029-04-13', 54000, 'car', '2024-04-13'),
+          ('0% balance transfer', 'Bank of America', $1, NULL, '2026-03-02', 420000, '2027-03-01', NULL, 'balance_transfer', '2026-03-02')`,
+  [A.bankAmericard],
 );
 
 await q(`INSERT INTO app_setting (key, value) VALUES ('overview_cards', '["cashback_interest", "fee_interest", "investment", "zelle"]')`);
 
-console.log(`seed: 2 people, ${Object.keys(A).length} accounts, ${txns.length} transactions, ${(CARDS.length + 2) * 12 - 1} statements, 2 loans`);
+console.log(`seed: 2 people, ${Object.keys(A).length} accounts, ${txns.length} transactions, ${(CARDS.length + 2) * 12 - 1 + 7} statements, 2 loans`);
 await db.end();

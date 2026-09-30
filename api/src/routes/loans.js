@@ -185,6 +185,96 @@ loansRouter.get('/', async (req, res, next) => {
 });
 
 /* ------------------------------------------------------------------
+   History — the per-loan drill-down: one row per month, from the
+   loan's start (or its first linked statement, or when it was added)
+   through the current month.
+
+   remaining: the same three-source balance as everywhere else
+     (effectiveBalanceSql), evaluated at each month's end. No new
+     maths — no amortization, no interest.
+   paid: only what can actually be read, never inferred.
+     - linked to a card: the payments the issuer printed on that
+       month's statement (statement.total_payments_cents), same
+       "read it off the statement" rule as cashback;
+     - otherwise, with a lender: Loan-category payment transactions
+       whose merchant or description contains the lender's name
+       ("WELLS FARGO AUTO DRAFT" for lender "Wells Fargo"). Plain
+       substring (strpos), not ILIKE, so a % or _ in a lender's name
+       can't widen the match;
+     - neither: null — the UI says it can't tell, rather than guessing.
+   records_from: the first month the app has anything to read payments
+     from (the linked card's first statement, or the first transaction
+     at all). A month before it isn't "no payment", it's "no records".
+   ------------------------------------------------------------------ */
+
+const MAX_HISTORY_MONTHS = 120;
+
+loansRouter.get('/:id/history', async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid loan id' });
+
+    const { rows: found } = await query('SELECT id, name, linked_account_id, lender FROM loan WHERE id = $1', [id]);
+    if (found.length === 0) return res.status(404).json({ error: 'Loan not found' });
+    const loan = found[0];
+    const paidSource = loan.linked_account_id ? 'statement' : loan.lender?.trim() ? 'lender_match' : null;
+
+    const monthEnd = `LEAST((m + interval '1 month' - interval '1 day')::date, CURRENT_DATE)`;
+    const paidSql = {
+      statement: `(SELECT COALESCE(SUM(s.total_payments_cents), 0) FROM statement s
+                    WHERE s.account_id = loan.linked_account_id AND date_trunc('month', s.period_end) = m)`,
+      lender_match: `(SELECT COALESCE(-SUM(t.amount_cents), 0) FROM transaction t
+                       JOIN category c ON c.id = t.category_id
+                      WHERE c.name = 'Loan' AND t.txn_type = 'payment'
+                        AND date_trunc('month', t.posted_date) = m
+                        AND (strpos(lower(COALESCE(t.merchant, '')), lower(trim(loan.lender))) > 0
+                          OR strpos(lower(t.description), lower(trim(loan.lender))) > 0))`,
+    }[paidSource] ?? 'NULL';
+
+    const { rows } = await query(
+      `WITH bounds AS (
+         SELECT date_trunc('month', COALESCE(
+                  start_date,
+                  (SELECT MIN(period_end) FROM statement WHERE account_id = loan.linked_account_id),
+                  created_at::date))::date AS first_month
+           FROM loan WHERE id = $1
+       ),
+       months AS (
+         SELECT generate_series(
+                  GREATEST(first_month, date_trunc('month', CURRENT_DATE) - interval '${MAX_HISTORY_MONTHS - 1} months'),
+                  date_trunc('month', CURRENT_DATE),
+                  interval '1 month')::date AS m
+           FROM bounds
+       )
+       SELECT to_char(m, 'YYYY-MM') AS month,
+              ${paidSql}::int AS paid_cents,
+              (${effectiveBalanceSql(monthEnd)})::int AS remaining_cents,
+              ${balanceSourceSql(monthEnd)} AS balance_source
+         FROM months CROSS JOIN loan
+        WHERE loan.id = $1
+        ORDER BY m`,
+      [id]
+    );
+
+    const recordsFromSql = {
+      statement: [`SELECT to_char(MIN(period_end), 'YYYY-MM') AS m FROM statement WHERE account_id = $1`, [loan.linked_account_id]],
+      lender_match: [`SELECT to_char(MIN(posted_date), 'YYYY-MM') AS m FROM transaction`, []],
+    }[paidSource];
+    const recordsFrom = recordsFromSql ? (await query(...recordsFromSql)).rows[0].m : null;
+
+    res.json({
+      loan_id: id,
+      paid_source: paidSource,
+      records_from: recordsFrom,
+      total_paid_cents: paidSource ? rows.reduce((sum, r) => sum + (r.paid_cents ?? 0), 0) : null,
+      months: rows,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/* ------------------------------------------------------------------
    Create
    ------------------------------------------------------------------ */
 

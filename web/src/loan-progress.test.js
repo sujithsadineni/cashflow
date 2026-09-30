@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { percentClearedFor, loanInsightsFor } from './loan-progress.js';
+import { percentClearedFor, loanInsightsFor, loanMonthStatus } from './loan-progress.js';
 
 // Three loans in the exact shape GET /api/loans returns (invented amounts), pinned to 2026-09-30.
 const TODAY = new Date(2026, 8, 30);
@@ -51,4 +51,17 @@ test('percentClearedFor: a car loan term (4 of 72 months) is 6%', () => {
   } finally {
     globalThis.Date = real;
   }
+});
+
+test('loanMonthStatus: future, untracked, before records, loan start, paid, due this month, and nothing found', () => {
+  const base = { currentMonth: '2026-09', paidSource: 'lender_match' };
+  assert.equal(loanMonthStatus({ ...base, month: '2026-11', paidCents: 0 }), 'ahead');
+  assert.equal(loanMonthStatus({ ...base, month: '2026-05', paidCents: 54000, paidSource: null }), 'untracked');
+  assert.equal(loanMonthStatus({ ...base, month: '2025-03', paidCents: 0, recordsFrom: '2025-10' }), 'before');
+  assert.equal(loanMonthStatus({ ...base, month: '2025-11', paidCents: 0, recordsFrom: '2025-10' }), 'none');
+  assert.equal(loanMonthStatus({ ...base, month: '2026-03', paidCents: 0, startMonth: '2026-03' }), 'started');
+  assert.equal(loanMonthStatus({ ...base, month: '2026-03', paidCents: 35000, startMonth: '2026-03' }), 'paid');
+  assert.equal(loanMonthStatus({ ...base, month: '2026-05', paidCents: 54000 }), 'paid');
+  assert.equal(loanMonthStatus({ ...base, month: '2026-09', paidCents: 0 }), 'due');
+  assert.equal(loanMonthStatus({ ...base, month: '2026-08', paidCents: 0 }), 'none');
 });

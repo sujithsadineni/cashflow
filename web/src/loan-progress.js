@@ -97,3 +97,24 @@ export const VIVID_LOAN = {
   balance_transfer: { emoji: '🔄', fill: 'bg-vivid-amber', tint: 'bg-vivid-amber/10', stroke: 'var(--color-vivid-amber)' },
   other: { emoji: '💼', fill: 'bg-vivid-teal', tint: 'bg-vivid-teal/10', stroke: 'var(--color-vivid-teal)' },
 };
+
+/**
+ * One month of a loan's history, as the drill-down colours it. Pure, so
+ * the rule is tested rather than eyeballed:
+ *   ahead     — a future month on the schedule (nothing to know yet)
+ *   untracked — no way to read payments for this loan (no linked card, no lender)
+ *   before    — earlier than the app's first record (`recordsFrom`), so absence proves nothing
+ *   started   — the loan's first month with no payment in it: nothing was due yet
+ *   paid    — a payment was actually found that month
+ *   due     — the current month, no payment found yet (not late — the month isn't over)
+ *   none    — a past month with no payment found
+ * `month` and `currentMonth` are 'YYYY-MM' strings, so they compare as text.
+ */
+export function loanMonthStatus({ month, paidCents, paidSource, currentMonth, recordsFrom, startMonth }) {
+  if (month > currentMonth) return 'ahead';
+  if (!paidSource) return 'untracked';
+  if (recordsFrom && month < recordsFrom && !(paidCents > 0)) return 'before';
+  if (month === startMonth && !(paidCents > 0)) return 'started';
+  if (paidCents > 0) return 'paid';
+  return month === currentMonth ? 'due' : 'none';
+}
