@@ -4,6 +4,7 @@ import { usePrivacy } from '../privacy-context';
 import { useDesign } from '../design-context';
 import { motion } from 'motion/react';
 import { api } from '../api';
+import { SupportButton } from './support/SupportButton';
 
 /**
  * A left sidebar rather than a top bar: it scales to more items
@@ -286,6 +287,7 @@ export function Layout({ connection, database }) {
           )}
         </div>
       </main>
+      <SupportButton />
     </div>
   );
 }

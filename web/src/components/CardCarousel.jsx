@@ -422,7 +422,10 @@ export function CardCarousel({ accounts, selectedId, onSelect, onChanged }) {
       <div className="flex items-center justify-center gap-4">
         <ArrowButton direction="left" onClick={() => step(-1)} disabled={index === 0} />
 
-        <div className="relative h-56 w-[27rem] max-w-full overflow-hidden">
+        {/* `isolate`: the cards' z-index (front card z-30) only orders them among
+            themselves — without it the front card painted over every page-level
+            dialog (z-20) opened on the Cards page. */}
+        <div className="relative isolate h-56 w-[27rem] max-w-full overflow-hidden">
           {visible.map(({ account, diff }) => (
             <div
               key={account.id}

@@ -27,7 +27,8 @@
   ],
   "allow": [
     "github.com/sujithsadineni",
-    "sujithsadineni.github.io"
+    "sujithsadineni.github.io",
+    "linkedin.com/in/sujith-sadineni-508322209"
   ],
   "_comment_globs": "`**` does not match dot-files or dot-folders (.github, .gitignore) \u2014 list those explicitly."
 }

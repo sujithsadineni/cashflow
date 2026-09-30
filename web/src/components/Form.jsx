@@ -35,6 +35,10 @@ export function TextInput({ invalid, type = 'text', ...props }) {
   );
 }
 
+export function TextArea({ invalid, rows = 5, ...props }) {
+  return <textarea rows={rows} className={`${controlClasses} resize-y ${invalid ? 'border-spend' : ''}`} {...props} />;
+}
+
 export function Select({ options, invalid, ...props }) {
   return (
     <select className={`${controlClasses} ${invalid ? 'border-spend' : ''}`} {...props}>
