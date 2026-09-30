@@ -94,8 +94,31 @@ Ask the same thing. Codex reads `AGENTS.md` directly.
    upload a statement under Import.
 
 Uploaded statements are kept in `data/statements/` at the repo root, which is
-git-ignored. The Anthropic API key in `api/.env` is optional — see the
-comment there.
+git-ignored.
+
+### Optional: read any bank's PDFs with Claude
+
+Without an API key, CSV files and PDFs from **Bank of America, Chase,
+American Express and Bilt** are read entirely on your machine — free. For
+any other bank's PDF, cashflow can ask Claude to read the transaction pages:
+
+1. Create an API key at **[console.anthropic.com](https://console.anthropic.com)**
+   → API Keys (the account needs a little prepaid credit).
+2. Put it in `api/.env` — never anywhere else; that file is git-ignored:
+
+   ```sh
+   ANTHROPIC_API_KEY=your-key-here
+   ```
+
+3. Restart the API (`Ctrl+C`, then `npm run dev` in `api/`) — it reads `.env`
+   only at startup.
+4. On the **Import** page, upload through the **Claude API** box instead of
+   **Local parsing**. Only the pages with transactions or totals are sent
+   (terms and conditions are skipped locally), and cashflow asks you to
+   confirm before each statement since it costs money — typically a few cents.
+   Every parsed row still waits for your review before it's saved.
+
+Only Claude (Anthropic) is supported today; OpenAI/GPT is not.
 
 ## Tests
 
