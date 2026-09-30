@@ -138,13 +138,15 @@ export function Segmented({ value, onChange, options, size = 'md', tone = 'neutr
   const outerPad = size === 'lg' ? 'p-1' : 'p-0.5';
   const btnPad = size === 'lg' ? 'px-4 py-1.5 text-[0.95rem]' : 'px-3 py-1 text-sm';
 
+  // Never wider than its container: on a phone a long tab bar scrolls sideways
+  // inside itself instead of pushing the whole page wider than the screen.
   return (
-    <div className={`inline-flex rounded-lg border border-rule bg-band ${outerPad}`}>
+    <div className={`inline-flex max-w-full overflow-x-auto rounded-lg border border-rule bg-band ${outerPad}`}>
       {options.map((option) => (
         <button
           key={option.value}
           onClick={() => onChange(option.value)}
-          className={`rounded-md border font-medium transition-colors ${btnPad} ${
+          className={`shrink-0 whitespace-nowrap rounded-md border font-medium transition-colors ${btnPad} ${
             value === option.value
               ? tones[option.tone ?? tone]
               : 'border-transparent font-normal text-muted hover:text-ink'

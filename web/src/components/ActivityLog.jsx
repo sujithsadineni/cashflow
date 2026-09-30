@@ -144,7 +144,7 @@ export function ActivityLog({ categories = [], accounts = [], people = [] }) {
         <PageTitle className="text-lg font-medium text-ink" emoji="📈" tint="bg-vivid-pink/15">
           Activity
         </PageTitle>
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 max-w-full items-center gap-3">
           <Segmented value={area} onChange={setArea} options={AREAS} />
           <button onClick={() => setNonce((n) => n + 1)} className="text-sm text-muted underline-offset-4 hover:text-ink hover:underline">
             Refresh

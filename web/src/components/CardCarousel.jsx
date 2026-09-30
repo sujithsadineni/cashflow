@@ -419,7 +419,10 @@ export function CardCarousel({ accounts, selectedId, onSelect, onChanged }) {
 
   return (
     <div className="mb-6">
-      <div className="flex items-center justify-center gap-4">
+      {/* Phones: the whole row (arrows + a real-card-shaped 24rem card) is scaled
+          down together with `zoom`, which also shrinks its layout width —
+          squeezing the card's width instead would distort its proportions. */}
+      <div className="flex items-center justify-center gap-4 max-sm:[zoom:0.66]">
         <ArrowButton direction="left" onClick={() => step(-1)} disabled={index === 0} />
 
         {/* `isolate`: the cards' z-index (front card z-30) only orders them among

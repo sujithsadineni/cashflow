@@ -194,28 +194,83 @@ function useAlertBadge() {
   return state;
 }
 
+function Brand({ vivid }) {
+  return (
+    <Link to="/" className="flex items-center gap-2 text-lg font-medium tracking-tight text-ink">
+      {vivid && (
+        <span className="grid size-5 grid-cols-2 gap-0.5" aria-hidden="true">
+          <span className="rounded-[3px] bg-vivid-green" />
+          <span className="rounded-[3px] bg-vivid-amber" />
+          <span className="rounded-[3px] bg-vivid-blue" />
+          <span className="rounded-[3px] bg-vivid-red" />
+        </span>
+      )}
+      cashflow
+    </Link>
+  );
+}
+
+/**
+ * Phones and narrow windows (below Tailwind's `md`, 768px): the sidebar
+ * would take half the screen, so it becomes a drawer — a slim top bar
+ * with a menu button, and the sidebar slides in over a dimmed page.
+ * Tapping a page, the backdrop, or Esc closes it. From `md` up it's the
+ * same fixed sidebar as always.
+ */
 export function Layout({ connection, database }) {
   const { privacyMode } = usePrivacy();
   const { design } = useDesign();
   const vivid = design === 'vivid';
   const location = useLocation();
   const alertBadge = useAlertBadge();
-  return (
-    <div className="flex min-h-screen bg-paper">
-      <aside className="flex w-52 shrink-0 flex-col border-r border-rule bg-band/40 px-5 py-8">
-        <Link to="/" className="flex items-center gap-2 text-lg font-medium tracking-tight text-ink">
-          {vivid && (
-            <span className="grid size-5 grid-cols-2 gap-0.5" aria-hidden="true">
-              <span className="rounded-[3px] bg-vivid-green" />
-              <span className="rounded-[3px] bg-vivid-amber" />
-              <span className="rounded-[3px] bg-vivid-blue" />
-              <span className="rounded-[3px] bg-vivid-red" />
-            </span>
-          )}
-          cashflow
-        </Link>
+  const [menuOpen, setMenuOpen] = useState(false);
 
-        <nav className="mt-8 flex flex-col gap-4">
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e) => e.key === 'Escape' && setMenuOpen(false);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [menuOpen]);
+
+  return (
+    <div className="flex min-h-screen flex-col bg-paper md:flex-row">
+      <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-rule bg-paper/95 px-4 py-3 backdrop-blur md:hidden">
+        <button
+          onClick={() => setMenuOpen(true)}
+          aria-label="Open menu"
+          aria-expanded={menuOpen}
+          aria-controls="app-sidebar"
+          className="-ml-1 flex size-9 items-center justify-center rounded-md text-ink transition-colors hover:bg-band"
+        >
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M3 5.5h14M3 10h14M3 14.5h14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          </svg>
+        </button>
+        <Brand vivid={vivid} />
+        {alertBadge.count > 0 && (
+          <Link to="/alerts" className={`ml-auto flex h-6 min-w-6 items-center justify-center rounded-full px-2 text-xs font-semibold tnum text-paper ${alertBadge.urgent ? 'bg-spend' : 'bg-warn'}`} aria-label={`${alertBadge.count} alerts`}>
+            {alertBadge.count}
+          </Link>
+        )}
+      </header>
+
+      {menuOpen && <div className="fixed inset-0 z-30 bg-ink/30 md:hidden" onClick={() => setMenuOpen(false)} aria-hidden="true" />}
+
+      <aside
+        id="app-sidebar"
+        className={`fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col overflow-y-auto border-r border-rule bg-paper px-5 py-8 shadow-lg transition-transform duration-200
+                    md:static md:z-auto md:w-52 md:translate-x-0 md:bg-band/40 md:shadow-none
+                    ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}
+      >
+        <div className="flex items-center justify-between">
+          <Brand vivid={vivid} />
+          <button onClick={() => setMenuOpen(false)} aria-label="Close menu" className="text-muted transition-colors hover:text-ink md:hidden">
+            ✕
+          </button>
+        </div>
+
+        {/* A click on any link closes the phone drawer (bubbles up from the NavLink). */}
+        <nav className="mt-8 flex flex-col gap-4" onClick={() => setMenuOpen(false)}>
           {NAV_GROUPS.map((group, i) => (
             <div key={i} className={`flex flex-col gap-1 ${i > 0 ? 'border-t border-rule pt-4' : ''}`}>
               {vivid && group.map((item) => <VividNavItem key={item.to} {...item} alertBadge={alertBadge} />)}
@@ -264,7 +319,7 @@ export function Layout({ connection, database }) {
         </div>
       </aside>
 
-      <main className="min-w-0 flex-1 px-8 py-10">
+      <main className="min-w-0 flex-1 px-4 py-6 md:px-8 md:py-10">
         <div className="mx-auto max-w-5xl">
           {import.meta.env.VITE_DEMO === '1' && (
             <p className="mb-6 rounded-lg border border-rule bg-band px-4 py-2 text-sm text-muted">

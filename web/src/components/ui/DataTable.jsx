@@ -45,9 +45,15 @@ export function DataTable({
   const expandable = Boolean(renderDetail);
   const colCount = columns.length + (expandable ? 1 : 0);
 
+  // Phones: ~8rem per column is the least a column can hold without text and
+  // logos colliding, so a wide table scrolls sideways inside its own box instead
+  // of crushing. A two-column table (Activity) still fits; from `md` up, no minimum.
   return (
-    <div className={`border border-rule bg-raised ${stickyHeader ? 'overflow-x-auto' : 'overflow-hidden'} ${vivid ? 'rounded-2xl shadow-sm' : 'rounded-lg'}`}>
-      <table className={`w-full border-collapse text-sm ${fixed ? 'table-fixed' : ''}`}>
+    <div className={`overflow-x-auto border border-rule bg-raised ${vivid ? 'rounded-2xl shadow-sm' : 'rounded-lg'}`}>
+      <table
+        style={{ '--dt-min': `${columns.length * 8}rem` }}
+        className={`w-full min-w-[var(--dt-min)] border-collapse text-sm md:min-w-0 ${fixed ? 'table-fixed' : ''}`}
+      >
         <thead>
           <tr className={`border-b text-left ${vivid ? 'border-rule bg-band/60 text-ink/70' : 'border-rule-str bg-raised text-muted'}`}>
             {expandable && <th className="w-10 py-2.5 pl-3" aria-label="Details" />}

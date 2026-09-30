@@ -12,6 +12,7 @@
 import { Router } from 'express';
 import { query } from '../db.js';
 import { projectOccurrences, isLapsed } from '../recurring.js';
+import { spendCents } from '../spend.js';
 
 export const calendarRouter = Router();
 
@@ -45,7 +46,7 @@ calendarRouter.get('/', async (req, res, next) => {
     const gridEnd = isoDate(gridEndDate);
 
     const { rows: transactions } = await query(
-      `SELECT t.id, t.posted_date::text, t.amount_cents, t.merchant, t.description, t.recurring_series_id,
+      `SELECT t.id, t.posted_date::text, t.amount_cents, t.txn_type, t.merchant, t.description, t.recurring_series_id,
               rs.name AS series_name, rs.glyph AS series_glyph
          FROM transaction t
          LEFT JOIN recurring_series rs ON rs.id = t.recurring_series_id
@@ -68,7 +69,7 @@ calendarRouter.get('/', async (req, res, next) => {
 
     for (const t of transactions) {
       const day = ensureDay(t.posted_date);
-      day.transactions.push({ id: t.id, amount_cents: t.amount_cents, merchant: t.merchant, description: t.description });
+      day.transactions.push({ id: t.id, amount_cents: t.amount_cents, txn_type: t.txn_type, merchant: t.merchant, description: t.description });
       if (t.recurring_series_id) {
         day.recurring.push({
           series_id: t.recurring_series_id, name: t.series_name, glyph: t.series_glyph,
@@ -98,7 +99,8 @@ calendarRouter.get('/', async (req, res, next) => {
     for (let cursor = new Date(gridStartDate); cursor <= gridEndDate; cursor.setDate(cursor.getDate() + 1)) {
       const date = isoDate(cursor);
       const entry = byDate.get(date) ?? { transactions: [], recurring: [] };
-      const totalSpendCents = entry.transactions.filter((t) => t.amount_cents < 0).reduce((sum, t) => sum + t.amount_cents, 0);
+      // Same definition of spending as the Overview (spend.js mirrors summary.js).
+      const totalSpendCents = spendCents(entry.transactions);
       days.push({
         date,
         in_month: date.slice(0, 7) === month,
@@ -110,7 +112,8 @@ calendarRouter.get('/', async (req, res, next) => {
 
     const inMonth = days.filter((d) => d.in_month);
     const totals = {
-      spend_cents: inMonth.reduce((sum, d) => sum + d.total_spend_cents, 0),
+      // Netted over the whole month, then clamped — exactly the Overview's month figure.
+      spend_cents: spendCents(inMonth.flatMap((d) => d.transactions)),
       recurring_spend_cents: inMonth.reduce(
         (sum, d) => sum + d.recurring.filter((r) => r.status === 'PAID').reduce((s, r) => s + Math.min(r.amount_cents, 0), 0),
         0

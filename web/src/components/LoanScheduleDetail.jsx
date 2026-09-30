@@ -168,7 +168,9 @@ export function LoanScheduleDetail({ loan, onClose }) {
         return (
           <div key={m.month} className="flex items-center gap-3 py-2 text-sm">
             <span className="w-20 shrink-0 text-ink">{monthLabel(m.month)}</span>
-            <span className={`min-w-0 flex-1 truncate text-xs ${status === 'none' ? 'text-spend' : 'text-muted'}`}>{STATUS_TEXT[status]}</span>
+            {/* On phones there's no room for this beside two amounts — the calendar above shows it. */}
+            <span className={`hidden min-w-0 flex-1 truncate text-xs sm:block ${status === 'none' ? 'text-spend' : 'text-muted'}`}>{STATUS_TEXT[status]}</span>
+            <span className="flex-1 sm:hidden" />
             <span className="w-24 text-right font-mono text-earn tnum">{m.paid_cents ? formatMoney(m.paid_cents) : '—'}</span>
             <span className="w-24 text-right font-mono text-ink tnum">{m.remaining_cents != null ? formatMoney(m.remaining_cents) : '—'}</span>
           </div>

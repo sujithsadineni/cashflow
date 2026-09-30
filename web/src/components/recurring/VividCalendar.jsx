@@ -121,7 +121,8 @@ function DayCard({ day, isToday, isSelected, isWeekend, maxSpendCents, onSelectD
           <span className={`text-sm font-medium tnum ${day.in_month ? 'text-ink' : 'text-faint'}`}>{dayNumber}</span>
         )}
         {spend > 0 && day.in_month && (
-          <span className="font-mono text-[10px] font-medium tnum text-vivid-loss">{formatMoney(-spend, { compact: true })}</span>
+          // Hidden on phones, where it collides with the day number — the spend bar below still shows it.
+          <span className="hidden font-mono text-[10px] font-medium tnum text-vivid-loss sm:inline">{formatMoney(-spend, { compact: true })}</span>
         )}
       </div>
 

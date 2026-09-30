@@ -639,7 +639,7 @@ export function Overview({ accounts = [], people = [], onChange }) {
           carries an icon and a top accent bar (style "B" from the
           owner's own four-way comparison), not the plain-text-only
           look from before. */}
-      <section className="mb-10 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <section className="mb-10 grid grid-cols-1 gap-4 min-[480px]:grid-cols-2 lg:grid-cols-4">
         <SummaryCard
           label="Income"
           accent="green"
@@ -708,7 +708,7 @@ export function Overview({ accounts = [], people = [], onChange }) {
           the household's own call once five stopped fitting cleanly
           and a scrolling strip (tried first) felt like the wrong fix
           for what was really just one card too many. */}
-      <section className="mb-10 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <section className="mb-10 grid grid-cols-1 gap-3 min-[480px]:grid-cols-2 lg:grid-cols-4">
         {visibleCards.includes('cashback_interest') && (
           <SummaryCard
             compact
