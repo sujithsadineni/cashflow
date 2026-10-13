@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/cashflow/favicon.svg" />
+    <meta name="theme-color" content="#FBFCFA" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Design and light/dark before the app starts, so a dark page never
+         flashes white (D234). Mirrors design-context.jsx; the demo build
+         (VITE_DEMO=1) defaults to Glass, D257. -->
+    <script>
+      try {
+        var d = localStorage.getItem('cashflow_design') || ('1' === '1' ? 'glass' : 'vivid');
+        var a = localStorage.getItem('cashflow_appearance') || 'system';
+        var dark = a === 'dark' || (a === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.design = d;
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      } catch (e) {}
+    </script>
+    <title>cashflow</title>
+    <script type="module" crossorigin src="/cashflow/assets/index-Dwhawwa_.js"></script>
+    <link rel="modulepreload" crossorigin href="/cashflow/assets/Form-CcbDLQ2U.js">
+    <link rel="stylesheet" crossorigin href="/cashflow/assets/index-VAx5bhJc.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
