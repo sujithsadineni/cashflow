@@ -142,7 +142,7 @@ test('header: Description beats Memo when both exist', () => {
 test('file: single amount column, signs preserved', () => {
   const result = parseStatementCsv(
     'Date,Description,Amount\n' +
-    '03/26/2026,FOOD LION #2196,-100.00\n' +
+    '03/26/2026,FOOD LION #7777,-100.00\n' +
     '03/31/2026,PAYROLL,"$6,853.59"\n'
   );
   assert.equal(result.ok, true);
@@ -151,6 +151,28 @@ test('file: single amount column, signs preserved', () => {
     result.rows.map((r) => [r.posted_date, r.amount_cents, r.confidence]),
     [['2026-03-26', -10000, 'HIGH'], ['2026-03-31', 685359, 'HIGH']]
   );
+});
+
+test('file: a card export (charges +, payments -) is flipped to our convention', () => {
+  const result = parseStatementCsv(
+    'Date,Description,Amount\n' +
+    '01/03/2026,AplPay CORNER BAKERY SHELBYVILLE NC,16.09\n' +
+    '01/09/2026,MOBILE PAYMENT - THANK YOU,-228.87\n' +
+    '01/12/2026,BOOK NOOK SHELBYVILLE NC,-63.39\n' +
+    '01/14/2026,ADJUSTMENT,0.00\n'
+  );
+  assert.equal(result.flipped, true);
+  assert.deepEqual(result.rows.map((r) => r.amount_cents), [-1609, 22887, 6339, 0]);
+});
+
+test('file: a bank export paying a card is not flipped', () => {
+  const result = parseStatementCsv(
+    'Date,Description,Amount\n' +
+    '01/03/2026,PAYROLL,1200.00\n' +
+    '01/09/2026,AMEX EPAYMENT ACH PMT,-228.87\n'
+  );
+  assert.equal(result.flipped, false);
+  assert.deepEqual(result.rows.map((r) => r.amount_cents), [120000, -22887]);
 });
 
 test('file: separate debit/credit columns normalise to our sign convention', () => {

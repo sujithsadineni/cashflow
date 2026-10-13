@@ -23,6 +23,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { Router } from 'express';
+import { buildKnowledge } from '../merchant-knowledge.js';
 import multer from 'multer';
 import { query } from '../db.js';
 import { audit } from '../audit.js';
@@ -59,14 +60,13 @@ merchantIconsRouter.get('/', async (req, res, next) => {
 
 merchantIconsRouter.get('/all-merchants', async (req, res, next) => {
   try {
+    // Each merchant with what the household's transactions say about it (D189).
     const { rows } = await query(
-      `SELECT merchant, COUNT(*)::int AS transaction_count
-         FROM transaction
-        WHERE merchant IS NOT NULL
-        GROUP BY merchant
-        ORDER BY transaction_count DESC, merchant`
+      `SELECT t.merchant, t.description, t.amount_cents, t.txn_type, c.name AS category_name, t.posted_date::text AS posted_date
+         FROM transaction t LEFT JOIN category c ON c.id = t.category_id
+        WHERE t.merchant IS NOT NULL`
     );
-    res.json(rows);
+    res.json(buildKnowledge(rows).map((k) => ({ ...k, transaction_count: k.count })));
   } catch (err) {
     next(err);
   }

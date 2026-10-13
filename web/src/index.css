@@ -216,19 +216,6 @@ body {
   animation: bar-grow 0.5s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 
-/* An indeterminate upload/parse progress bar — a quiet sliding
-   highlight, not a spinner or a percentage we can't actually measure
-   (statement parsing has no reliable progress signal to report). Used
-   under the two upload boxes on the Statements page while a file is
-   being read or parsed. */
-@keyframes upload-progress {
-  0%   { transform: translateX(-100%); }
-  100% { transform: translateX(220%); }
-}
-.animate-upload-progress {
-  animation: upload-progress 1.1s ease-in-out infinite;
-}
-
 /* Visible keyboard focus, everywhere, without having to think
    about it per component. */
 :focus-visible {
@@ -236,10 +223,626 @@ body {
   outline-offset: 2px;
   border-radius: 2px;
 }
+/* A field box draws its own focus ring around the whole field, so the input
+   or button inside it doesn't add a second one (D237: the search box showed
+   a green outline inside its ring). */
+.field-box:focus-visible,
+.field-box :focus-visible,
+/* Same for the Dropdown and calendar panels (D241): the search row is the
+   field, and the panel itself only takes focus so the arrow keys work; the
+   active row's highlight already shows where the keyboard is. */
+.dropdown-panel:focus-visible,
+.dropdown-panel input:focus-visible { outline: none; }
+
+/* The Recurring page's Review button while new bills wait to be looked
+   at (D186): a soft pine ring that breathes. Asked for by the owner; it
+   stops as soon as nothing is waiting, and reduced motion stills it
+   through the rule below. */
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-earn) 45%, transparent); }
+  50%      { box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-earn) 0%, transparent), 0 0 16px 2px color-mix(in srgb, var(--color-earn) 30%, transparent); }
+}
+.animate-glow {
+  animation: glow 2.4s ease-in-out infinite;
+}
+
+/* A toast's time left (D201): a hairline that empties left to right.
+   Paused on hover by the component; hidden under reduced motion. */
+@keyframes toast-timer {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
+}
+.toast-timer {
+  animation-name: toast-timer;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+/* A row's ＋ when it has something to resolve: a card payment not yet
+   traced to its bank (D199). Oxblood, because it's a question about
+   money. Runs in Classic too, at the owner's request; it stops the
+   moment the payment verifies. Reduced motion gets a still ring. */
+@keyframes attention-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-spend) 45%, transparent); }
+  50%      { box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-spend) 0%, transparent), 0 0 12px 1px color-mix(in srgb, var(--color-spend) 30%, transparent); }
+}
+.attention-pulse {
+  border-color: color-mix(in srgb, var(--color-spend) 55%, transparent) !important;
+  color: var(--color-spend) !important;
+  animation: attention-pulse 2s ease-in-out infinite;
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .attention-pulse { box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-spend) 35%, transparent); }
+}
+
+/* The Dropdown panel (D229) opens instantly in Classic; Vivid lets it pop. */
+@keyframes dropdown-pop {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+}
+:root[data-design="vivid"] .dropdown-panel { animation: dropdown-pop 0.14s ease-out; transform-origin: top left; }
+@media (prefers-reduced-motion: reduce) {
+  :root[data-design="vivid"] .dropdown-panel { animation: none; }
+}
+
+/* ============================================================
+   Glass (D233): the third design, after Apple's Liquid Glass.
+
+   One rule from Apple's guidance shapes all of it: glass belongs to
+   the functional layer only, the controls and navigation that float
+   above the content (sidebar, top bar, dropdown and calendar panels,
+   toasts). Content (cards, tables, forms) stays solid white, so the
+   numbers stay crisp. The soft backdrop exists so the glass has
+   something to show through it.
+
+   Like Vivid, it repoints the shared variables every utility reads,
+   so the pages need no per-design branches; components that branch on
+   design === 'vivid' render their Classic (quiet, emoji-free) version.
+   ============================================================ */
+:root[data-design="glass"] {
+  /* Apple's grouped-background greys and label colours. */
+  --color-paper:    #F2F2F7;
+  --color-band:     #F2F2F7;
+  --color-raised:   #FFFFFF;
+  --color-ink:      #1D1D1F;
+  --color-muted:    #6E6E73;
+  --color-faint:    #A1A1A6;
+  --color-rule:     #E5E5EA;
+  --color-rule-str: #D1D1D6;
+  /* The accessible variants of Apple's system colours, readable as small text on white. */
+  --color-spend:    #D70015;
+  --color-earn:     #248A3D;
+  --color-warn:     #C93400;
+  --color-info:     #0071E3;
+  --color-accent2:  #8944AB;
+
+  /* The system font (SF Pro on Apple devices). Figures use it too, with
+     tabular numerals, the way Wallet and Stocks set money. */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "IBM Plex Sans", system-ui, sans-serif;
+
+  /* Softer, larger corners: continuous-looking 10/14/18/22. */
+  --radius-md:  10px;
+  --radius-lg:  14px;
+  --radius-xl:  18px;
+  --radius-2xl: 22px;
+
+  /* The material. Regular glass: about 24px of blur, a mild saturation lift. */
+  --g-tint:       255 255 255;
+  --g-highlight:  rgb(255 255 255 / 0.6);
+  --g-solid:      #FFFFFF;
+  --g-solid-hover:#F5F5F7;
+  --g-hover:      rgb(0 0 0 / 0.04);
+  --g-selected:   rgb(0 0 0 / 0.07);
+  --g-group:      rgb(242 242 247 / 0.85);
+  --g-hairline:   rgb(0 0 0 / 0.06);
+  --g-primary-hover: #0077ED;
+  --glass-fill:   rgb(var(--g-tint) / 0.62);
+  --glass-edge:   rgb(255 255 255 / 0.7);
+  --glass-shadow: 0 0.5px 0 rgb(0 0 0 / 0.04), 0 10px 30px -12px rgb(0 0 0 / 0.18);
+  --glass-blur:   blur(24px) saturate(1.5);
+}
+
+/* The backdrop: three faint washes of colour on Apple's grey, fixed so it
+   sits still while the page scrolls over it. */
+:root[data-design="glass"] body {
+  background:
+    radial-gradient(60rem 40rem at 0% 0%, rgb(52 199 89 / 0.13), transparent 60%),
+    radial-gradient(50rem 36rem at 100% 0%, rgb(175 82 222 / 0.10), transparent 60%),
+    radial-gradient(70rem 40rem at 50% 110%, rgb(0 122 255 / 0.10), transparent 60%),
+    var(--color-paper);
+  background-attachment: fixed;
+}
+:root[data-design="glass"] .bg-paper { background-color: transparent; }
+
+/* Money in the system font, figures aligned. */
+:root[data-design="glass"] .font-mono { font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+:root[data-design="glass"] code,
+:root[data-design="glass"] kbd { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+/* Size-specific tracking: large type tightens, as Apple's does. */
+:root[data-design="glass"] h1,
+:root[data-design="glass"] h2,
+:root[data-design="glass"] .text-2xl { letter-spacing: -0.022em; }
+
+/* The functional layer: glass. */
+:root[data-design="glass"] .app-sidebar,
+:root[data-design="glass"] .app-topbar,
+:root[data-design="glass"] .dropdown-panel,
+:root[data-design="glass"] .toast-card,
+:root[data-design="glass"] .gt-month {
+  background-color: var(--glass-fill);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-color: var(--glass-edge);
+  box-shadow: inset 0 1px 0 var(--g-highlight), var(--glass-shadow);
+}
+/* The sidebar is the largest surface, so it's the most opaque (Apple: "larger
+   elements such as sidebars are more opaque"). */
+:root[data-design="glass"] .app-sidebar { --glass-fill: rgb(var(--g-tint) / 0.5); }
+/* Panels and toasts carry text over anything, so they're thicker. */
+:root[data-design="glass"] .dropdown-panel,
+:root[data-design="glass"] .toast-card { --glass-fill: rgb(var(--g-tint) / 0.78); }
+/* Transactions' pinned month heading (D256): rows scroll under it, so it's
+   as thick as a panel to keep "September 2026" and its sums readable. */
+:root[data-design="glass"] .gt-month { --glass-fill: rgb(var(--g-tint) / 0.78); }
+/* A dialog's scrim dims and softly blurs what's behind: focus on the task. */
+:root[data-design="glass"] .modal-scrim {
+  background-color: rgb(0 0 0 / 0.22);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+/* Content cards sit on the backdrop as solid white with a soft, deep
+   shadow instead of a hard border. */
+/* Cards only, not table rows, which share these classes (a row matched once
+   and lost its bottom border). */
+:root[data-design="glass"] :is(div, section, article, aside, li, form).bg-raised:is(.border-rule, .border) {
+  border-color: var(--g-hairline);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 8px 24px -16px rgb(0 0 0 / 0.16);
+}
+
+/* Press feedback on pointer-down, instantly (Apple: respond on press). */
+:root[data-design="glass"] button:not(:disabled):active,
+:root[data-design="glass"] a:active { transform: scale(0.97); transition: transform 100ms ease-out; }
+
+/* Panels arrive as material, scale and blur together, critically damped. */
+@keyframes glass-arrive {
+  from { opacity: 0; transform: translateY(-4px) scale(0.97); filter: blur(4px); }
+}
+:root[data-design="glass"] .dropdown-panel { animation: glass-arrive 0.22s cubic-bezier(0.2, 0.9, 0.3, 1); transform-origin: top left; }
+
+/* Accessibility states: an opaque fallback, stronger edges, no motion. */
+@media (prefers-reduced-transparency: reduce) {
+  :root[data-design="glass"] .app-sidebar,
+  :root[data-design="glass"] .app-topbar,
+  :root[data-design="glass"] .dropdown-panel,
+  :root[data-design="glass"] .toast-card,
+  :root[data-design="glass"] .gt-month { --glass-fill: var(--g-solid); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  :root[data-design="glass"] .modal-scrim { -webkit-backdrop-filter: none; backdrop-filter: none; background-color: rgb(0 0 0 / 0.35); }
+}
+@media (prefers-contrast: more) {
+  :root[data-design="glass"] {
+    --glass-fill: rgb(var(--g-tint) / 0.95);
+    --glass-edge: #8E8E93;
+    --color-rule: #C7C7CC;
+    --color-muted: #48484A;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-design="glass"] .dropdown-panel { animation: none; }
+  :root[data-design="glass"] button:active,
+  :root[data-design="glass"] a:active { transform: none; }
+}
+
+/* Glass polish 1 (D233): form and filter fields are content-layer controls,
+   so they're solid white with a soft lift on the backdrop, not grey and not
+   glass. A set filter keeps its faint green; focus or open rings in blue,
+   Apple's focus colour. */
+:root[data-design="glass"] .field-box {
+  background-color: var(--g-solid);
+  border-color: var(--g-hairline);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 4px 14px -8px rgb(0 0 0 / 0.14);
+}
+:root[data-design="glass"] .field-box[data-set] { background-color: color-mix(in srgb, var(--color-earn) 7%, var(--g-solid)); }
+:root[data-design="glass"] .field-box:hover { border-color: rgb(0 0 0 / 0.1); }
+:root[data-design="glass"] .field-box:focus-within,
+:root[data-design="glass"] .field-box[aria-expanded="true"],
+:root[data-design="glass"] .field-box:has([aria-expanded="true"]) {
+  border-color: var(--color-info);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-info) 18%, transparent), 0 4px 14px -8px rgb(0 0 0 / 0.14);
+}
+
+/* Glass polish 2 (D233): the sidebar selection the macOS way: a soft fill
+   on the glass (not a white card), the icon in the accent blue, no side bar.
+   Icons are blue only for the page you're on, so colour marks "you are here". */
+:root[data-design="glass"] .nav-item { border-radius: 8px; }
+:root[data-design="glass"] .nav-item:hover { background-color: var(--g-hover); }
+:root[data-design="glass"] .nav-item[aria-current="page"] {
+  background-color: var(--g-selected);
+  box-shadow: none;
+  font-weight: 600;
+}
+:root[data-design="glass"] .nav-item[aria-current="page"] .nav-icon { color: var(--color-info); }
+:root[data-design="glass"] .nav-bar { display: none; }
+
+/* Glass polish 3 (D233): a table's month rows read like an Apple list's
+   section header: "September 2026" in sentence case and semibold, not
+   tracked-out capitals, on a faint grey band that doesn't fight the rows. */
+:root[data-design="glass"] .group-row { background-color: var(--g-group); }
+:root[data-design="glass"] .group-row > td {
+  text-transform: none;
+  letter-spacing: -0.005em;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-ink);
+  padding-top: 0.5rem;
+  padding-bottom: 0.375rem;
+}
+
+/* Glass polish 4 (D233): no coloured stripe across a card's top edge. The
+   colour moves into the icon instead, a tinted circle like Apple's Health
+   and Wallet tiles, so a card says income or spend once, quietly. */
+:root[data-design="glass"] .accent-bar { display: none; }
+:root[data-design="glass"] .card-icon { background-color: color-mix(in srgb, currentColor 13%, var(--g-solid)); }
+
+/* Glass polish 5 (D233): chart bars in Apple's bright system red and green.
+   Those are too light for small text (the accessible variants above handle
+   that) but right for shapes. Rounder tops, and other months dimmed a
+   little less so the year still reads. */
+:root[data-design="glass"] { --chart-spend: #FF3B30; --chart-earn: #34C759; }
+:root[data-design="glass"] .chart-bar { rx: 4px; }
+:root[data-design="glass"] g[opacity="0.35"] { opacity: 0.5; }
+:root[data-design="glass"] .mix-bar { border-radius: 9999px; background-color: var(--chart-spend); }
+
+/* Glass next steps 1 (D233): buttons as Apple's capsules. The primary
+   action is the blue filled capsule (Apple: emphasise a primary action by
+   colouring its background, one or two per view). The quiet action is a
+   white capsule with a hairline, a secondary "bordered" button. */
+:root[data-design="glass"] .btn { border-radius: 9999px; font-weight: 600; letter-spacing: -0.01em; }
+:root[data-design="glass"] .btn-primary { background-color: var(--color-info); color: #FFFFFF; box-shadow: 0 1px 2px rgb(0 113 227 / 0.25); }
+:root[data-design="glass"] .btn-primary:hover:not(:disabled) { background-color: var(--g-primary-hover); }
+:root[data-design="glass"] .btn-primary:disabled { background-color: rgb(120 120 128 / 0.2); color: rgb(60 60 67 / 0.35); box-shadow: none; }
+:root[data-design="glass"] .btn-quiet { background-color: var(--g-solid); border-color: var(--g-hairline); color: var(--color-info); }
+:root[data-design="glass"] .btn-quiet:hover:not(:disabled) { background-color: var(--g-solid-hover); }
+
+/* Glass next steps 2 (D233): Apple's large title. Every page opens with the
+   same 34px-bold heading, tight leading and negative tracking, whatever size
+   Classic gives it, so each page's first line reads the same way. */
+:root[data-design="glass"] .page-title {
+  font-size: 2.125rem;
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: var(--color-ink);
+}
+
+/* Glass next steps 3 (D233): dialogs as Apple sheets. A sheet is part of the
+   functional layer, so it gets thick glass (88% fill: it carries a lot of
+   text), large continuous-looking corners, the bright material edge, and a
+   deep shadow; it arrives by scaling and sharpening together, critically
+   damped, from the centre it will occupy. */
+@keyframes sheet-arrive {
+  from { opacity: 0; transform: scale(0.96); filter: blur(6px); }
+}
+:root[data-design="glass"] .modal-scrim > .bg-raised {
+  background-color: rgb(var(--g-tint) / 0.88);
+  -webkit-backdrop-filter: blur(30px) saturate(1.6);
+  backdrop-filter: blur(30px) saturate(1.6);
+  border: 1px solid var(--glass-edge);
+  border-radius: 22px;
+  box-shadow: inset 0 1px 0 var(--g-highlight), 0 30px 80px -20px rgb(0 0 0 / 0.35), 0 4px 16px -4px rgb(0 0 0 / 0.12);
+  animation: sheet-arrive 0.28s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root[data-design="glass"] .modal-scrim > .bg-raised { background-color: var(--g-solid); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-design="glass"] .modal-scrim > .bg-raised { animation: none; }
+}
+
+/* Glass next steps 4 (D233): dark Glass. It follows the system appearance,
+   the way Apple's own apps do. Apple's dark palette: true black under
+   elevated greys (#1C1C1E, #2C2C2E), and the dark-mode system colours,
+   which are brighter so they hold contrast on dark. The glass tint turns to
+   charcoal, edges and highlights become faint white, shadows deepen, and
+   the backdrop's colour washes dim so the glass doesn't glow. */
+:root[data-design="glass"][data-theme="dark"] {
+  color-scheme: dark;
+  --color-paper:    #000000;
+  --color-band:     #2C2C2E;
+  --color-raised:   #1C1C1E;
+  --color-ink:      #F5F5F7;
+  --color-muted:    #98989D;
+  --color-faint:    #636366;
+  --color-rule:     #38383A;
+  --color-rule-str: #48484A;
+  --color-spend:    #FF6961;
+  --color-earn:     #30D158;
+  --color-warn:     #FF9F0A;
+  --color-info:     #409CFF;
+  --color-accent2:  #DA8FFF;
+  --chart-spend:    #FF453A;
+  --chart-earn:     #30D158;
+
+  --g-tint:       28 28 30;
+  --g-highlight:  rgb(255 255 255 / 0.08);
+  --g-solid:      #1C1C1E;
+  --g-solid-hover:#2C2C2E;
+  --g-hover:      rgb(255 255 255 / 0.06);
+  --g-selected:   rgb(255 255 255 / 0.1);
+  --g-group:      rgb(44 44 46 / 0.85);
+  --g-hairline:   rgb(255 255 255 / 0.08);
+  --g-primary-hover: #0A84FF;
+  --glass-edge:   rgb(255 255 255 / 0.1);
+  --glass-shadow: 0 0.5px 0 rgb(0 0 0 / 0.3), 0 12px 32px -12px rgb(0 0 0 / 0.6);
+}
+:root[data-design="glass"][data-theme="dark"] body {
+  background:
+    radial-gradient(60rem 40rem at 0% 0%, rgb(48 209 88 / 0.10), transparent 60%),
+    radial-gradient(50rem 36rem at 100% 0%, rgb(191 90 242 / 0.10), transparent 60%),
+    radial-gradient(70rem 40rem at 50% 110%, rgb(10 132 255 / 0.10), transparent 60%),
+    var(--color-paper);
+  background-attachment: fixed;
+}
+/* Primary text on the blue capsule stays white; dark cards lose the deep drop shadow. */
+:root[data-design="glass"][data-theme="dark"] :is(div, section, article, aside, li, form).bg-raised:is(.border-rule, .border),
+:root[data-design="glass"][data-theme="dark"] .field-box { box-shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 8px 24px -16px rgb(0 0 0 / 0.8); }
+:root[data-design="glass"][data-theme="dark"] .btn-primary { box-shadow: none; }
+:root[data-design="glass"][data-theme="dark"] .modal-scrim { background-color: rgb(0 0 0 / 0.5); }
+
+/* Every design, in dark (D234): the money colours are brighter there, so a
+   solid green/orange/red fill takes near-black text, as Apple's do; white on
+   them falls to ~2:1. */
+:root[data-theme="dark"] :is(.bg-earn, .bg-warn, .bg-spend, .bg-info),
+:root[data-theme="dark"] :is(.bg-earn, .bg-warn, .bg-spend, .bg-info) * { color: #0B0B0C; }
+
+
+/* ============================================================
+   Dark mode for every design (D234). The appearance setting (Light,
+   Dark, Auto) sets data-theme on <html> beside data-design, and each
+   design repoints the same shared variables, so no page needed a
+   per-theme branch. Glass's dark block sits above, with its material.
+   ============================================================ */
+:root[data-theme="dark"] { color-scheme: dark; }
+
+/* Classic at night: the greenbar ledger inverted. Deep green-black paper,
+   the band a step lighter, ink a pale green-grey; oxblood and pine lifted
+   until they read on dark (both above 4.5:1 on the paper). */
+:root[data-design="classic"][data-theme="dark"] {
+  --color-paper:    #0F1412;
+  --color-band:     #19211D;
+  --color-raised:   #151C18;
+  --color-ink:      #E3EAE5;
+  --color-muted:    #9AA59E;
+  --color-faint:    #6C766F;
+  --color-rule:     #29322D;
+  --color-rule-str: #3A453E;
+  --color-spend:    #E58A74;
+  --color-earn:     #6FC79A;
+  --color-warn:     #D9A441;
+  --color-info:     #74B6C7;
+  --color-accent2:  #B79AD8;
+}
+
+/* Vivid at night: a cool near-black with the same saturated tiles, the
+   money colours brightened to hold contrast. */
+:root[data-design="vivid"][data-theme="dark"] {
+  --color-paper:    #0D1015;
+  --color-band:     #171B22;
+  --color-raised:   #13171E;
+  --color-ink:      #E9ECF1;
+  --color-muted:    #9CA3AF;
+  --color-faint:    #6B7280;
+  --color-rule:     #262C36;
+  --color-rule-str: #353D49;
+  --color-spend:    #FF7A66;
+  --color-earn:     #3DD68C;
+  --color-warn:     #F5B142;
+  --color-info:     #2EC4B6;
+  --color-accent2:  #B57BEE;
+  /* Vivid's own text colours: the deep loss red and the green read too dark
+     on night paper, so they lift; tiles keep their white glyphs legible. */
+  --color-vivid-loss:  #FF7A66;
+  --color-vivid-green: #2FB574;
+}
+
+/* The Glass intro's tiles and panels (D235): an intro has no content layer
+   to protect, so its floating tiles are the glass, over the light blooms. */
+:root[data-design="glass"] .welcome-glass {
+  background-color: rgb(var(--g-tint) / 0.55);
+  -webkit-backdrop-filter: blur(28px) saturate(1.6);
+  backdrop-filter: blur(28px) saturate(1.6);
+  border: 1px solid var(--glass-edge);
+  box-shadow: inset 0 1px 0 var(--g-highlight), 0 12px 32px -16px rgb(0 0 0 / 0.25);
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root[data-design="glass"] .welcome-glass { background-color: var(--g-solid); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+
+/* The Glass intro's effects (D238). */
+/* The blooms drift slowly (24s, well below the ~0.2 Hz Apple warns about) and stop under reduced motion. */
+@keyframes bloom-drift {
+  0%   { transform: translate(-50%, 0) scale(1); }
+  50%  { transform: translate(-42%, 6%) scale(1.08); }
+  100% { transform: translate(-50%, 0) scale(1); }
+}
+:root[data-design="glass"] .glass-bloom { animation: bloom-drift 24s ease-in-out infinite; }
+/* The wordmark's one shimmer: a band of light clipped to the letters. */
+.wordmark-shimmer {
+  color: transparent;
+  background-image: linear-gradient(100deg, transparent 35%, rgb(255 255 255 / 0.85) 50%, transparent 65%);
+  background-size: 50% 100%;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+/* A tile's glowing edge on hover: a conic band of light running round the border. */
+@property --edge-angle { syntax: '<angle>'; initial-value: 0deg; inherits: false; }
+@keyframes edge-run { to { --edge-angle: 360deg; } }
+.edge-glow::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(from var(--edge-angle), transparent 0deg, rgb(255 255 255 / 0.9) 40deg, var(--color-info) 80deg, transparent 140deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+.edge-glow.is-lit::before { opacity: 1; animation: edge-run 2.4s linear infinite; }
+/* The button's shine passes on hover. */
+.cta-shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 30%, rgb(255 255 255 / 0.45) 50%, transparent 70%);
+  transform: translateX(-120%);
+  transition: transform 0.7s ease;
+}
+.cta-shine:hover::after { transform: translateX(120%); }
+@media (prefers-reduced-motion: reduce) {
+  :root[data-design="glass"] .glass-bloom,
+  .edge-glow.is-lit::before { animation: none; }
+}
+
+/* ============================================================
+   Glass Settings (D244): System Settings, not a nine-segment bar.
+   A source list of panes with coloured icon tiles on the left, the
+   pane on the right, and every pane built from grouped inset lists
+   (white rounded groups, separators inset past the icon). Tokens only,
+   so dark Glass follows.
+   ============================================================ */
+:root[data-design="glass"] .gs-group {
+  background-color: var(--g-solid);
+  border: 0.5px solid var(--g-hairline);
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 8px 24px -18px rgb(0 0 0 / 0.18);
+  overflow: hidden;
+  /* clip, not hidden, where supported: hidden makes the group a scroll
+     container, which silently stops a sticky table header inside it (D253). */
+  overflow: clip;
+}
+:root[data-design="glass"][data-theme="dark"] .gs-group { box-shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset; }
+/* Inset separators: they start where the text starts, past any icon. */
+:root[data-design="glass"] .gs-row { position: relative; }
+:root[data-design="glass"] .gs-row + .gs-row::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: var(--gs-inset, 16px);
+  height: 0.5px;
+  background-color: var(--color-rule);
+}
+:root[data-design="glass"] .gs-row-action { transition: background-color 0.15s ease-out; }
+:root[data-design="glass"] .gs-row-action:hover { background-color: var(--g-hover); }
+/* Pressed: feedback on pointer-down, no delay; no shrink on a full-width row. */
+:root[data-design="glass"] .gs-row-action:active { background-color: var(--g-selected); transform: none; transition: none; }
+
+/* The pane icon tile: a rounded square in a system colour, white glyph. */
+:root[data-design="glass"] .gs-tile {
+  box-shadow: inset 0 0.5px 0 rgb(255 255 255 / 0.35), 0 0.5px 1px rgb(0 0 0 / 0.15);
+}
+
+/* The iOS switch: 51x31, green when on, the knob stretches while pressed. */
+:root[data-design="glass"] .gs-switch {
+  position: relative;
+  width: 51px;
+  height: 31px;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  background-color: rgb(120 120 128 / 0.16);
+  transition: background-color 0.25s ease-out;
+}
+:root[data-design="glass"][data-theme="dark"] .gs-switch { background-color: rgb(120 120 128 / 0.32); }
+:root[data-design="glass"] .gs-switch[aria-checked="true"] { background-color: var(--chart-earn); }
+:root[data-design="glass"] .gs-switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 27px;
+  height: 27px;
+  border-radius: 9999px;
+  background: #FFFFFF;
+  box-shadow: 0 3px 8px rgb(0 0 0 / 0.15), 0 1px 1px rgb(0 0 0 / 0.16), 0 0 0 0.5px rgb(0 0 0 / 0.04);
+  transition: left 0.32s cubic-bezier(0.25, 1, 0.5, 1), width 0.18s cubic-bezier(0.25, 1, 0.5, 1);
+}
+:root[data-design="glass"] .gs-switch[aria-checked="true"] .gs-switch-knob { left: 22px; }
+:root[data-design="glass"] .gs-switch:not(:disabled):active { transform: none; }
+:root[data-design="glass"] .gs-switch:not(:disabled):active .gs-switch-knob { width: 33px; }
+:root[data-design="glass"] .gs-switch[aria-checked="true"]:not(:disabled):active .gs-switch-knob { left: 16px; }
+:root[data-design="glass"] .gs-switch:focus-visible { outline: 3px solid color-mix(in srgb, var(--color-info) 45%, transparent); outline-offset: 2px; }
+
+/* The segmented control, Apple's way, everywhere in Glass: a grey track and
+   a raised white thumb, not a bordered button group. */
+:root[data-design="glass"] .segmented {
+  border-color: transparent;
+  background-color: rgb(118 118 128 / 0.12);
+  border-radius: 9px;
+}
+:root[data-design="glass"] .segmented > button { border-radius: 7px; border-color: transparent; }
+:root[data-design="glass"] .segmented > button[aria-pressed="true"] {
+  background-color: var(--g-solid);
+  color: var(--color-ink);
+  font-weight: 600;
+  box-shadow: 0 3px 8px rgb(0 0 0 / 0.12), 0 3px 1px rgb(0 0 0 / 0.04), 0 0 0 0.5px rgb(0 0 0 / 0.04);
+}
+:root[data-design="glass"][data-theme="dark"] .segmented { background-color: rgb(118 118 128 / 0.24); }
+:root[data-design="glass"][data-theme="dark"] .segmented > button[aria-pressed="true"] { background-color: #636366; color: #FFFFFF; }
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-design="glass"] .gs-switch-knob { transition: none; }
+  :root[data-design="glass"] .gs-switch:active .gs-switch-knob { width: 27px; }
+  :root[data-design="glass"] .gs-switch[aria-checked="true"]:active .gs-switch-knob { left: 22px; }
+}
+@media (prefers-contrast: more) {
+  :root[data-design="glass"] .gs-group { border-color: var(--color-rule-str); }
+  :root[data-design="glass"] .gs-switch { box-shadow: inset 0 0 0 1px var(--color-rule-str); }
+}
+
+/* Glass table headers (D250): Apple's list-view header (Numbers, Finder)
+   instead of a header row dressed exactly like the rows under it. A faint
+   blue-grey bar that no zebra row or month band shares, semibold labels,
+   and a firmer line where the data starts. Kept on the cells too, so a
+   sticky header keeps its colour while rows scroll under it. */
+:root[data-design="glass"] {
+  --table-head-bg: color-mix(in srgb, var(--color-info) 7%, #F5F6F8);
+  --table-head-ink: #3C4A5C;
+  --table-head-rule: rgb(60 80 110 / 0.18);
+}
+:root[data-design="glass"][data-theme="dark"] {
+  --table-head-bg: color-mix(in srgb, var(--color-info) 14%, #1C1C1E);
+  --table-head-ink: #B4C2D6;
+  --table-head-rule: rgb(160 190 230 / 0.16);
+}
+:root[data-design="glass"] .table-head,
+:root[data-design="glass"] .table-head > th {
+  background-color: var(--table-head-bg);
+}
+:root[data-design="glass"] .table-head {
+  border-bottom: 1px solid var(--table-head-rule);
+  box-shadow: inset 0 -1px 0 var(--table-head-rule);
+}
+:root[data-design="glass"] .table-head > th {
+  color: var(--table-head-ink);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  padding-top: 0.625rem;
+  padding-bottom: 0.625rem;
+}
+@media (prefers-contrast: more) {
+  :root[data-design="glass"] { --table-head-ink: #1D2A3A; --table-head-rule: rgb(0 0 0 / 0.5); }
+  :root[data-design="glass"][data-theme="dark"] { --table-head-ink: #E4ECF7; --table-head-rule: rgb(255 255 255 / 0.5); }
 }

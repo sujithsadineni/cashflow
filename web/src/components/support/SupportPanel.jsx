@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useDesign } from '../../design-context';
+import { useDesign } from '../../use-design';
 import { LINKEDIN_URL, REPO_URL, shareLinks } from '../../support-links';
 import { DetailDialog } from '../ui/DetailDialog';
 

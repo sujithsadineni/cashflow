@@ -3,6 +3,8 @@ import { PageTitle, Segmented } from './Form';
 import { DataTable } from './ui/DataTable';
 import { api, formatTimestamp } from '../api';
 import { describeAction, describeDetail, subjectOf } from '../activity-format';
+import { useDesign } from '../use-design';
+import { GlassActivity } from './activity/GlassActivity';
 
 /**
  * Every write the app has ever made, newest first (audit_log). D142
@@ -76,6 +78,7 @@ function ActivityDetail({ entry, lookup }) {
 }
 
 export function ActivityLog({ categories = [], accounts = [], people = [] }) {
+  const glass = useDesign().design === 'glass';
   const [area, setArea] = useState('all');
   const [nonce, setNonce] = useState(0); // Refresh bumps it
   // Each response carries the request key it answered, so a slow answer
@@ -109,6 +112,16 @@ export function ActivityLog({ categories = [], accounts = [], people = [] }) {
       )
       .catch((err) => setResult((prev) => ({ ...prev, error: err.message })));
 
+  if (glass) {
+    return (
+      <GlassActivity
+        areas={AREAS} area={area} setArea={setArea}
+        entries={entries} error={error} hasMore={result.hasMore} showMore={showMore}
+        refresh={() => setNonce((n) => n + 1)} lookup={lookup}
+      />
+    );
+  }
+
   const columns = [
     {
       key: 'what',
@@ -124,6 +137,8 @@ export function ActivityLog({ categories = [], accounts = [], people = [] }) {
             <div className="min-w-0">
               <div className="text-ink">{label}</div>
               {name && <div className="max-w-md truncate text-xs text-muted">{name}</div>}
+              {/* The When column is hidden on a phone (D232); the time rides here. */}
+              <div className="font-mono text-xs tnum text-faint md:hidden">{formatTimestamp(e.created_at)}</div>
             </div>
           </div>
         );
@@ -132,6 +147,7 @@ export function ActivityLog({ categories = [], accounts = [], people = [] }) {
     {
       key: 'when',
       header: 'When',
+      phone: false,
       className: 'whitespace-nowrap font-mono text-xs tnum text-muted',
       headerClassName: 'w-44',
       render: (e) => formatTimestamp(e.created_at),
@@ -145,8 +161,8 @@ export function ActivityLog({ categories = [], accounts = [], people = [] }) {
           Activity
         </PageTitle>
         <div className="flex min-w-0 max-w-full items-center gap-3">
-          <Segmented value={area} onChange={setArea} options={AREAS} />
-          <button onClick={() => setNonce((n) => n + 1)} className="text-sm text-muted underline-offset-4 hover:text-ink hover:underline">
+          <div className="min-w-0"><Segmented value={area} onChange={setArea} options={AREAS} /></div>
+          <button onClick={() => setNonce((n) => n + 1)} className="shrink-0 text-sm text-muted underline-offset-4 hover:text-ink hover:underline">
             Refresh
           </button>
         </div>

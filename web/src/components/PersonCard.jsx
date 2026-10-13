@@ -1,9 +1,9 @@
 import { api, maskName } from '../api';
 import { PersonAvatar, AvatarPicker } from './ui/PersonAvatar';
-import { useDesign } from '../design-context';
+import { useDesign } from '../use-design';
 import { EditableText } from './Form';
 import { CardFace } from './CardCarousel';
-import { useNotify } from '../notification-context';
+import { useNotify } from '../use-notify';
 
 /**
  * The expanded view behind a person's avatar in Settings > People —
@@ -24,6 +24,12 @@ export function PersonCard({ person, accounts, onClose, onRenamed }) {
     onRenamed();
   };
 
+  const setNickname = async (nickname) => {
+    await api.personNickname(person.id, nickname);
+    onRenamed();
+    notify(nickname ? `Nickname set to ${nickname}` : 'Nickname cleared', { type: 'success' });
+  };
+
   const rename = async (name) => {
     await api.personRename(person.id, name);
     onRenamed();
@@ -31,7 +37,7 @@ export function PersonCard({ person, accounts, onClose, onRenamed }) {
   };
 
   return (
-    <div className="fixed inset-0 z-20 flex items-center justify-center bg-ink/30 p-4" onClick={onClose}>
+    <div className="modal-scrim fixed inset-0 z-20 flex items-center justify-center bg-ink/30 p-4" onClick={onClose}>
       <div
         className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-lg border border-rule bg-raised p-6 shadow-lg"
         onClick={(e) => e.stopPropagation()}
@@ -39,7 +45,17 @@ export function PersonCard({ person, accounts, onClose, onRenamed }) {
         <div className="mb-6 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <PersonAvatar person={person} size={56} />
-            <EditableText value={person.name} onSave={rename} className="block text-xl font-medium" />
+            <div className="min-w-0">
+              <EditableText value={person.name} onSave={rename} className="block text-xl font-medium" />
+              {/* Shown where space is tight, like the Transactions table (D237); first name otherwise. */}
+              <div className="mt-0.5 flex items-center gap-2 text-sm text-muted">
+                <span>Nickname</span>
+                <EditableText value={person.nickname ?? null} onSave={setNickname} placeholder={`Add one (else “${person.name.split(' ')[0]}”)`} className="text-ink" />
+                {person.nickname && (
+                  <button onClick={() => setNickname(null)} className="text-xs text-faint underline-offset-4 hover:text-ink hover:underline">Clear</button>
+                )}
+              </div>
+            </div>
           </div>
           <button onClick={onClose} aria-label="Close" className="text-muted transition-colors hover:text-ink">
             ✕

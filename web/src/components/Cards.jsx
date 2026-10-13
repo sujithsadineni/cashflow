@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useApi } from '../use-api';
 import { api } from '../api';
 import { CardCarousel } from './CardCarousel';
 import { StatementCalendar } from './StatementCalendar';
@@ -7,7 +8,10 @@ import { MerchantHistory } from './MerchantHistory';
 import { DataTable } from './ui/DataTable';
 import { TransactionDetail } from './transactions/TransactionDetail';
 import { transactionColumns } from './transactions/columns';
-import { useAccountFilters, AccountFilterBar } from './AccountFilters';
+import { needsAttention } from '../payment-source';
+import { AccountFilterBar } from './AccountFilters';
+import { useAccountFilters } from '../account-filters';
+import { CardCategoryBar } from './CardCategoryBar';
 
 const PAGE_SIZE = 25;
 
@@ -44,11 +48,11 @@ function monthLabel(key) {
  * to that month instead of doing nothing, the way it used to.
  */
 export function Cards({ accounts, people, categories, onAccountsChanged }) {
-  const [selectedId, setSelectedId] = useState(null);
-  const [monthFilter, setMonthFilter] = useState(null); // "YYYY-MM" or null
-  const [data, setData] = useState(null);
-  const [page, setPage] = useState(0);
-  const [error, setError] = useState(null);
+  const [pickedId, setPickedId] = useState(null);
+  // Month, category and page belong to the card they were picked on (D211):
+  // switching cards starts the next one clean, with nothing to reset.
+  const [view, setView] = useState({ cardId: null, month: null, category: null, page: 0 });
+  const [actionError, setActionError] = useState(null);
   const [historyMerchant, setHistoryMerchant] = useState(null);
 
   const {
@@ -58,71 +62,64 @@ export function Cards({ accounts, people, categories, onAccountsChanged }) {
     filteredAccounts,
   } = useAccountFilters(accounts, people);
 
-  // A card that's selected when a filter hides it falls back to the
-  // first card the filter still shows, same as the Statements deck
-  // dropping back to "pick a card" — there's just always a card
-  // selected here instead, since this page has no unselected state.
-  useEffect(() => {
-    if (filteredAccounts.length === 0) {
-      if (selectedId !== null) setSelectedId(null);
-    } else if (selectedId === null || !filteredAccounts.some((a) => a.id === selectedId)) {
-      setSelectedId(filteredAccounts[0].id);
-    }
-  }, [filteredAccounts, selectedId]);
+  // The picked card while the filter still shows it, else the first card it
+  // does show. Worked out on each render rather than corrected in an effect
+  // afterwards, so the page never draws the hidden card first.
+  const selectedId = filteredAccounts.some((a) => a.id === pickedId) ? pickedId : filteredAccounts[0]?.id ?? null;
+  const own = view.cardId === selectedId;
+  const monthFilter = own ? view.month : null; // "YYYY-MM" or null
+  const categoryFilter = own ? view.category : null; // category id, 'none', or null (D198)
+  const page = own ? view.page : 0;
+  const setFilters = (next) => setView({ cardId: selectedId, month: monthFilter, category: categoryFilter, page: 0, ...next });
 
-  // Switching cards drops any month picked on the previous one —
-  // otherwise "April" from the last card would silently narrow the
-  // next one's table too, with no visible reason why it's empty.
-  useEffect(() => {
-    setMonthFilter(null);
-    setPage(0);
-  }, [selectedId]);
+  // The category bar's sums (the whole card, or the picked month), and the page of rows.
+  const range = monthFilter ? monthBounds(monthFilter) : {};
+  const summaryReq = useApi(
+    selectedId == null ? null : `card-summary:${selectedId}:${monthFilter ?? ''}`,
+    () => api.transactions.categorySummary({ account_id: selectedId, ...range }),
+    { tags: ['transactions'] },
+  );
+  const rowsReq = useApi(
+    selectedId == null ? null : `card-rows:${selectedId}:${monthFilter ?? ''}:${categoryFilter ?? ''}:${page}`,
+    () => api.transactions.list({ account_id: selectedId, limit: PAGE_SIZE, offset: page * PAGE_SIZE, ...range, ...(categoryFilter != null ? { category_id: categoryFilter } : {}) }),
+    { tags: ['transactions'] },
+  );
+  const summary = selectedId == null ? null : summaryReq.data ?? null;
+  const data = selectedId == null ? null : rowsReq.data ?? null;
+  const error = actionError ?? rowsReq.error ?? summaryReq.error;
 
-  const load = useCallback(async () => {
-    if (selectedId === null) {
-      setData(null);
-      return;
-    }
-    try {
-      const filters = { account_id: selectedId, limit: PAGE_SIZE, offset: page * PAGE_SIZE };
-      if (monthFilter) Object.assign(filters, monthBounds(monthFilter));
-      setData(await api.transactions.list(filters));
-      setError(null);
-    } catch (err) {
-      setError(err.message);
-    }
-  }, [selectedId, page, monthFilter]);
-
-  useEffect(() => { load(); }, [load]);
-
-  const selectCard = (id) => {
-    setSelectedId(id);
-    setPage(0);
-  };
+  // A new month or category starts the table back on its first page.
+  const pickMonth = (key) => setFilters({ month: key });
+  const pickCategory = (key) => setFilters({ category: key });
+  const setPage = (n) => setFilters({ page: n });
+  const selectCard = (id) => setPickedId(id);
 
   const recategorize = async (transaction, value) => {
     const categoryId = value === '' ? null : Number(value);
     try {
       await api.transactions.update(transaction.id, { category_id: categoryId });
-      setData({
-        ...data,
-        rows: data.rows.map((r) =>
+      rowsReq.setData((d) => ({
+        ...d,
+        rows: d.rows.map((r) =>
           r.id === transaction.id
             ? { ...r, category_id: categoryId, category_name: categories.find((c) => c.id === categoryId)?.name ?? null }
             : r
         ),
-      });
+      }));
+      summaryReq.reload();
+      setActionError(null);
     } catch (err) {
-      setError(err.message);
+      setActionError(err.message);
     }
   };
 
   const rename = async (transaction, merchant) => {
     try {
       await api.transactions.update(transaction.id, { merchant });
-      setData({ ...data, rows: data.rows.map((r) => (r.id === transaction.id ? { ...r, merchant } : r)) });
+      rowsReq.setData((d) => ({ ...d, rows: d.rows.map((r) => (r.id === transaction.id ? { ...r, merchant } : r)) }));
+      setActionError(null);
     } catch (err) {
-      setError(err.message);
+      setActionError(err.message);
     }
   };
 
@@ -169,7 +166,7 @@ export function Cards({ accounts, people, categories, onAccountsChanged }) {
 
             {/* Right half: the compact statement calendar. */}
             <div className="flex flex-col items-center text-center lg:w-1/2 lg:pt-2">
-              {selected && <StatementCalendar accountId={selected.id} onMonthClick={setMonthFilter} />}
+              {selected && <StatementCalendar accountId={selected.id} onMonthClick={pickMonth} />}
             </div>
           </div>
 
@@ -185,7 +182,7 @@ export function Cards({ accounts, people, categories, onAccountsChanged }) {
                 <span>
                   · Showing <span className="text-ink">{monthLabel(monthFilter)}</span>{' '}
                   <button
-                    onClick={() => setMonthFilter(null)}
+                    onClick={() => pickMonth(null)}
                     className="text-earn underline-offset-4 hover:underline"
                   >
                     Clear
@@ -197,12 +194,23 @@ export function Cards({ accounts, people, categories, onAccountsChanged }) {
 
           {error && <p className="mb-4 text-sm text-spend">{error}</p>}
 
+          {selected && summary && summary.total.count > 0 && (
+            <CardCategoryBar
+              summary={summary}
+              selected={categoryFilter}
+              onSelect={pickCategory}
+              accountType={selected.account_type}
+              scopeLabel={monthFilter ? monthLabel(monthFilter) : 'All time'}
+            />
+          )}
+
           {data && total > 0 && (
             <DataTable
               fixed
               rows={data.rows}
               rowKey={(t) => t.id}
-              renderDetail={(t) => <TransactionDetail transaction={t} lookup={{ categories, accounts, people }} />}
+              attention={needsAttention}
+              renderDetail={(t) => <TransactionDetail transaction={t} lookup={{ categories, accounts, people }} onChanged={() => { rowsReq.reload(); summaryReq.reload(); }} edit={{ categories, onRecategorize: recategorize }} />}
               columns={transactionColumns({
                 categories,
                 onRename: rename,
@@ -216,7 +224,9 @@ export function Cards({ accounts, people, categories, onAccountsChanged }) {
 
           {data && total === 0 && (
             <p className="py-10 text-center text-sm text-muted">
-              {monthFilter
+              {categoryFilter != null
+                ? 'Nothing in this category here.'
+                : monthFilter
                 ? `0 transactions in ${monthLabel(monthFilter)} — the statement's on file, this card just wasn't used that month.`
                 : 'Nothing on this card yet.'}
             </p>

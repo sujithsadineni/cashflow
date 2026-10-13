@@ -73,3 +73,25 @@ test('subjectOf: the name the entry recorded, and the entity it touched', () => 
   });
   assert.equal(subjectOf({ entity_type: 'app_setting', entity_id: null, detail: {} }).entity, 'App setting');
 });
+
+test('entries whose detail holds records never break the page (D199, D200)', () => {
+  // payment_match.run: "changed" is a list of rows, not field names.
+  const run = describeDetail({ payments: 90, verified: 76, changed: [{ card: 1, to: { via: 'bank' } }] }, lookup);
+  assert.equal(run.legacyFields, null);
+  assert.deepEqual(run.facts.find((f) => f.label === 'Changed'), { label: 'Changed', value: '1 item' });
+  // payment_match.set: from/to are records.
+  const set = describeDetail({ from: { via: 'bank', status: 'unverified' }, to: { via: 'cash', location: 'Riverton, NC' } }, lookup);
+  assert.deepEqual(set.changes, []);
+  assert.deepEqual(set.facts.map((f) => f.label), ['From', 'To']);
+  assert.equal(subjectOf({ detail: { to: { via: 'cash' } } }).name, null);
+  assert.equal(describeAction('payment_match.run').label, 'Card payments matched to their source');
+});
+
+test('subjectOf: a Review fix names what it set in words, not the stored value (D253)', () => {
+  const fix = (field, to) => ({ action: 'transaction_review.approved', entity_type: 'transaction', entity_id: 7, detail: { field, from: null, to, check: 'x' } });
+  assert.equal(subjectOf(fix('txn_type', 'purchase')).name, 'Type → Purchase');
+  assert.equal(subjectOf(fix('category', 'Shopping')).name, 'Category → Shopping');
+  assert.equal(subjectOf(fix('amount', '-2000000')).name, 'Amount → −$20,000.00');
+  assert.equal(subjectOf({ action: 'transaction_review.undone', detail: { field: 'txn_type', to: null } }).name, 'Type → None');
+  assert.equal(subjectOf(fix('txn_type', 'purchase')).entity, 'Transaction #7');
+});

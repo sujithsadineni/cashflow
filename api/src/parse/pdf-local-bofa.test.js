@@ -125,6 +125,14 @@ test('a generic electronic payment in the credits section becomes a positive Car
   assert.equal(payment.suggested_category, 'Card Payment');
 });
 
+test('cash paid in at an ATM is cash income (D218), never a refund (D207)', () => {
+  const pages = buildPages().map((p) => (p.pageNumber === 3 ? { ...p, text: p.text.replace('BA ELECTRONIC PAYMENT   5147   2468   - 850.00', 'ATM PAYMENT   RIVERTON   NC   5147   2468   - 850.00') } : p));
+  const atm = extractBofaLocally(pages, CLASSIFICATIONS, noCleanup).rows.find((row) => row.description.startsWith('ATM PAYMENT'));
+  assert.equal(atm.txn_type, 'deposit');
+  assert.equal(atm.suggested_category, 'Cash Deposit');
+  assert.equal(atm.amount_cents, 85000);
+});
+
 test('the SAME merchant appearing as both a purchase and a credit gets different txn_types', () => {
   // The exact real-world case that would break a rule like "everything
   // in Payments and Other Credits is a card payment" — Allstate shows

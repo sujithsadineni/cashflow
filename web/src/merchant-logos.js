@@ -1,7 +1,7 @@
 /**
  * A small curated merchant → domain map, so recognizable brands get a
  * real logo. Statement extraction already cleans merchant names down
- * to something human ("COSTCO WHSE #1206" → "Costco"), so matching is
+ * to something human ("COSTCO WHSE #1204" → "Costco"), so matching is
  * just a normalized lookup, not fuzzy guessing.
  *
  * Anything not in this list — a local restaurant, a small shop — has
@@ -9,6 +9,20 @@
  * instead of a broken image request. Add to this list as new
  * recognizable merchants show up; it's meant to grow.
  */
+// The household's own local places (D189, D190) live in household/, which is
+// never published (D259): a public clone simply has none of them.
+// Loaded at run time, so a clone without the folder still builds; the API
+// (Node) reads this file too. A production build (the demo) never asks for it.
+const HOUSEHOLD_FILE = './household/merchant-logos.js';
+let HOUSEHOLD_DOMAINS = {};
+if (!import.meta.env?.PROD) {
+  try {
+    ({ HOUSEHOLD_DOMAINS } = await import(/* @vite-ignore */ new URL(HOUSEHOLD_FILE, import.meta.url).href));
+  } catch {
+    // No household/ folder: a public clone.
+  }
+}
+
 const MERCHANT_DOMAINS = {
   costco: 'costco.com',
   target: 'target.com',
@@ -49,6 +63,10 @@ const MERCHANT_DOMAINS = {
   bilt: 'biltrewards.com',
   'bilt housing': 'biltrewards.com',
   'bank of america': 'bankofamerica.com',
+  // Card issuers as account.issuer spells them, for matched payments' logos (D199).
+  bofa: 'bankofamerica.com',
+  'goldman sachs bank usa': 'apple.com',
+  zolve: 'zolve.com',
   chase: 'chase.com',
   paypal: 'paypal.com',
   venmo: 'venmo.com',
@@ -139,9 +157,8 @@ const MERCHANT_DOMAINS = {
   allstate: 'www.allstate.com',
   'american eagle': 'ae.com',
   amtrak: 'amtrak.com',
-  axon: 'axon.com',
-  'axon enterprise': 'axon.com',
   barclaycard: 'barclaycardus.com',
+  barclays: 'barclaycardus.com',
   'calvin klein': 'calvinklein.com',
   'charlotte russe': 'charlotterusse.com',
   egencia: 'egencia.com',
@@ -188,11 +205,95 @@ const MERCHANT_DOMAINS = {
   globale: 'global-e.com',
   continuedev: 'continue.dev',
   'honk parking': 'honkmobile.com',
-  'miss a': 'shopmissa.com',
-  'k manga': 'kmanga.kodansha.com',
-  botiwalla: 'botiwalla.com',
-  'chapel hill tire': 'chapelhilltire.com',
-  'galleria dallas ice skating center': 'galleriadallas.com',
+  // D188: common chains, so a bank line from one the household hasn't seen yet still
+  // gets its name and logo (brandAtStart).
+  'burger king': 'bk.com',
+  'culvers': 'culvers.com',
+  'too good to go': 'toogoodtogo.com',
+  'tous les jours': 'tlj.com',
+  'hudson': 'hudsongroup.com',
+  'wendys': 'wendys.com',
+  'subway': 'subway.com',
+  'kfc': 'kfc.com',
+  'arbys': 'arbys.com',
+  'popeyes': 'popeyes.com',
+  'dunkin': 'dunkindonuts.com',
+  'sonic': 'sonicdrivein.com',
+  'five guys': 'fiveguys.com',
+  'jersey mikes': 'jerseymikes.com',
+  'wingstop': 'wingstop.com',
+  'zaxbys': 'zaxbys.com',
+  'bojangles': 'bojangles.com',
+  'cook out': 'cookout.com',
+  'dairy queen': 'dairyqueen.com',
+  'krispy kreme': 'krispykreme.com',
+  'chick fil a': 'chick-fil-a.com',
+  'papa johns': 'papajohns.com',
+  'pizza hut': 'pizzahut.com',
+  'little caesars': 'littlecaesars.com',
+  'jimmy johns': 'jimmyjohns.com',
+  'firehouse subs': 'firehousesubs.com',
+  'qdoba': 'qdoba.com',
+  'moes': 'moes.com',
+  'cava': 'cava.com',
+  'sweetgreen': 'sweetgreen.com',
+  'shake shack': 'shakeshack.com',
+  'in n out': 'in-n-out.com',
+  'whataburger': 'whataburger.com',
+  'ihop': 'ihop.com',
+  'dennys': 'dennys.com',
+  'waffle house': 'wafflehouse.com',
+  'olive garden': 'olivegarden.com',
+  'applebees': 'applebees.com',
+  'chilis': 'chilis.com',
+  'red robin': 'redrobin.com',
+  'texas roadhouse': 'texasroadhouse.com',
+  'cheesecake factory': 'thecheesecakefactory.com',
+  'pf changs': 'pfchangs.com',
+  'dutch bros': 'dutchbros.com',
+  'tim hortons': 'timhortons.com',
+  'baskin robbins': 'baskinrobbins.com',
+  'cold stone': 'coldstonecreamery.com',
+  'insomnia cookies': 'insomniacookies.com',
+  'crumbl': 'crumblcookies.com',
+  'lidl': 'lidl.com',
+  'sprouts': 'sprouts.com',
+  'wegmans': 'wegmans.com',
+  'h mart': 'hmart.com',
+  'safeway': 'safeway.com',
+  'ingles': 'ingles-markets.com',
+  'wawa': 'wawa.com',
+  'circle k': 'circlek.com',
+  'speedway': 'speedway.com',
+  'sunoco': 'sunoco.com',
+  'racetrac': 'racetrac.com',
+  'murphy usa': 'murphyusa.com',
+  'macys': 'macys.com',
+  'nordstrom': 'nordstrom.com',
+  'old navy': 'oldnavy.com',
+  'michaels': 'michaels.com',
+  'hobby lobby': 'hobbylobby.com',
+  'petsmart': 'petsmart.com',
+  'petco': 'petco.com',
+  'ulta': 'ulta.com',
+  'sephora': 'sephora.com',
+  'harbor freight': 'harborfreight.com',
+  'autozone': 'autozone.com',
+  'advance auto parts': 'advanceautoparts.com',
+  'jiffy lube': 'jiffylube.com',
+  'audible': 'audible.com',
+  'instacart': 'instacart.com',
+  'american airlines': 'aa.com',
+  'southwest airlines': 'southwest.com',
+  'marriott': 'marriott.com',
+  'hilton': 'hilton.com',
+  'expedia': 'expedia.com',
+  'gong cha': 'gong-cha.com',
+  'kung fu tea': 'kungfutea.com',
+  'tiger sugar': 'tigersugar.com',
+  '85c bakery': '85cbakerycafe.com',
+  'nothing bundt cakes': 'nothingbundtcakes.com',
+  ...HOUSEHOLD_DOMAINS,
 };
 
 const normalize = (name) => name.trim().toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ');
@@ -229,4 +330,31 @@ export function avatarColorFor(name) {
 export function initialsFor(name) {
   if (!name) return '?';
   return name.trim().charAt(0).toUpperCase();
+}
+
+/**
+ * The known brand a bank line or name starts with (D188): "BURGER KING
+ * #27813 KINGS MOUNTAIN" → { key: 'burger king', domain }. The longest key
+ * wins, at a word boundary, the same rule as lookupMerchantDomain. Shared
+ * with the API's merchant learning, so one list names both logos and
+ * merchants.
+ */
+// How a brand key reads as a name, where title case gets it wrong.
+const BRAND_NAMES = {
+  culvers: "Culver's", mcdonalds: "McDonald's", wendys: "Wendy's", arbys: "Arby's", dennys: "Denny's", applebees: "Applebee's",
+  chilis: "Chili's", zaxbys: "Zaxby's", 'jersey mikes': "Jersey Mike's", 'jimmy johns': "Jimmy John's", 'papa johns': "Papa John's",
+  moes: "Moe's", kohls: "Kohl's", macys: "Macy's", lowes: "Lowe's", 'trader joes': "Trader Joe's", dominos: "Domino's",
+  'pf changs': "P.F. Chang's", chickfila: 'Chick-fil-A', sofi: 'SoFi', ihop: 'IHOP', kfc: 'KFC', 'chick fil a': 'Chick-fil-A', 'in n out': 'In-N-Out', 'h mart': 'H Mart',
+  'cook out': 'Cook Out', 'little caesars': 'Little Caesars', 'too good to go': 'Too Good To Go', 'tous les jours': 'Tous Les Jours',
+};
+export const brandName = (key) => BRAND_NAMES[key] ?? key.replace(/\b[a-z]/g, (c) => c.toUpperCase());
+
+export function brandAtStart(text) {
+  const n = normalize(text ?? '');
+  let best = null;
+  for (const [key, domain] of Object.entries(MERCHANT_DOMAINS)) {
+    if (key.includes('_')) continue;
+    if ((n === key || n.startsWith(`${key} `)) && (!best || key.length > best.key.length)) best = { key, domain };
+  }
+  return best;
 }

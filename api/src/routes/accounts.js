@@ -16,10 +16,11 @@ import multer from 'multer';
 import { query } from '../db.js';
 import { audit } from '../audit.js';
 import { changesBetween } from '../changes.js';
-import { validate, accountCreateSchema, accountUpdateSchema } from '../validate.js';
+import { validate, accountCreateSchema, accountUpdateSchema, accountBalanceSchema } from '../validate.js';
 import { randomCardColor } from '../card-palette.js';
 import { isKnownBank } from '../known-banks.js';
 import { MAX_IMAGE_BYTES, isValidImage } from '../uploads.js';
+import { spendSql } from '../spend.js';
 
 export const accountsRouter = Router();
 
@@ -60,13 +61,18 @@ accountsRouter.get('/', async (req, res, next) => {
               a.color, a.image_path, a.holder_name,
               a.is_active, a.created_at,
               p.id AS person_id, p.name AS person_name,
-              COUNT(t.id) AS transaction_count
+              COUNT(t.id) AS transaction_count,
+              mb.balance_cents AS manual_balance_cents, to_char(mb.as_of, 'YYYY-MM-DD') AS manual_balance_as_of
          FROM account a
          JOIN person p ON p.id = a.person_id
          LEFT JOIN transaction t ON t.account_id = a.id
+         LEFT JOIN LATERAL (
+           SELECT balance_cents, as_of FROM account_balance WHERE account_id = a.id ORDER BY as_of DESC LIMIT 1
+         ) mb ON true
         ${includeClosed ? '' : 'WHERE a.is_active = true'}
         GROUP BY a.id, a.name, a.issuer, a.account_type, a.mask,
-                 a.color, a.image_path, a.holder_name, a.is_active, a.created_at, p.id, p.name
+                 a.color, a.image_path, a.holder_name, a.is_active, a.created_at, p.id, p.name,
+                 mb.balance_cents, mb.as_of
         ORDER BY (a.account_type = 'CREDIT_CARD'), p.id, a.name`
     );
 
@@ -112,12 +118,10 @@ accountsRouter.get('/:id/statement-months', async (req, res, next) => {
 
 /* ------------------------------------------------------------------
    Summary — year-to-date spend and top merchants, for the card's
-   flip-to-back view. Deliberately the simple, root definition of
-   spend (amount_cents < 0), not the dashboard's refined one (which
-   excludes payments/transfers and folds in refunds) — this is a
-   decorative supplementary figure on a card face, not the headline
-   Spend number, so it isn't worth carrying that extra business logic
-   into a second place.
+   flip-to-back view. The same spending rule as the Overview
+   (spend.js). It once used the bare "amount_cents < 0", which counted
+   card payments, transfers and reversed rent as spending — up to 4x a
+   card's real spend (D168).
    ------------------------------------------------------------------ */
 
 accountsRouter.get('/:id/summary', async (req, res, next) => {
@@ -128,10 +132,10 @@ accountsRouter.get('/:id/summary', async (req, res, next) => {
     if (existing.length === 0) return res.status(404).json({ error: 'Account not found' });
 
     const { rows: totalRows } = await query(
-      `SELECT COALESCE(SUM(amount_cents), 0) AS ytd_spend_cents
+      `SELECT COALESCE(LEAST(SUM(amount_cents), 0), 0) AS ytd_spend_cents
          FROM transaction
         WHERE account_id = $1
-          AND amount_cents < 0
+          AND ${spendSql('')}
           AND posted_date >= date_trunc('year', CURRENT_DATE)`,
       [id]
     );
@@ -140,7 +144,7 @@ accountsRouter.get('/:id/summary', async (req, res, next) => {
     // description — a handful of rows that never got a merchant match
     // would otherwise fragment into their own near-duplicate slot (a
     // real "Costco" merchant row and a leftover raw "COSTCO WHSE
-    // #0187..." description both showing up separately), wasting one
+    // #0101..." description both showing up separately), wasting one
     // of only 3 slots on what's visibly the same merchant. Those rows
     // still count in ytd_spend_cents above; they just don't compete
     // for a top-3 spot under an ugly, uncleaned name.
@@ -150,10 +154,11 @@ accountsRouter.get('/:id/summary', async (req, res, next) => {
               COUNT(*) AS count
          FROM transaction
         WHERE account_id = $1
-          AND amount_cents < 0
+          AND ${spendSql('')}
           AND merchant IS NOT NULL
           AND posted_date >= date_trunc('year', CURRENT_DATE)
         GROUP BY merchant
+        HAVING SUM(amount_cents) < 0
         ORDER BY total_cents ASC
         LIMIT 3`,
       [id]
@@ -410,3 +415,27 @@ accountsRouter.delete('/:id/image', async (req, res, next) => {
   }
 });
 
+
+/**
+ * Record a hand-entered balance (D180), for a savings or investment
+ * account the app never gets a statement for. The same date again
+ * corrects that entry. A newer date becomes the latest.
+ */
+accountsRouter.post('/:id/balances', validate(accountBalanceSchema), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const { as_of, balance_cents } = req.body;
+    const { rows: acct } = await query('SELECT id FROM account WHERE id = $1', [id]);
+    if (acct.length === 0) return res.status(404).json({ error: 'Account not found' });
+    const { rows } = await query(
+      `INSERT INTO account_balance (account_id, as_of, balance_cents) VALUES ($1, $2, $3)
+       ON CONFLICT (account_id, as_of) DO UPDATE SET balance_cents = EXCLUDED.balance_cents
+       RETURNING id, to_char(as_of, 'YYYY-MM-DD') AS as_of, balance_cents`,
+      [id, as_of, balance_cents]
+    );
+    await audit({ action: 'account.balance_recorded', entityType: 'account', entityId: id, detail: { as_of, balance_cents } });
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});

@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { api, formatMoney } from '../../api';
-import { useDesign } from '../../design-context';
-import { useNotify } from '../../notification-context';
+import { useDesign } from '../../use-design';
+import { useNotify } from '../../use-notify';
 import { Button, TextInput, SectionHeader } from '../Form';
 import { PersonCard } from '../PersonCard';
 import { PersonAvatar } from '../ui/PersonAvatar';
+import { GlassPeople } from './GlassPeople';
 
 /**
  * Settings → People (moved out of Settings.jsx in D144). Classic keeps
@@ -55,7 +56,12 @@ function VividPersonCard({ person, accounts, spentCents, index, onClick }) {
   );
 }
 
-export function People({ people, accounts, onChange }) {
+export function People(props) {
+  // Glass (D243): poster cards and a Contacts-style sheet.
+  return useDesign().design === 'glass' ? <GlassPeople {...props} /> : <HouseholdPeople {...props} />;
+}
+
+function HouseholdPeople({ people, accounts, onChange }) {
   const notify = useNotify();
   const vivid = useDesign().design === 'vivid';
   const [newPersonName, setNewPersonName] = useState('');

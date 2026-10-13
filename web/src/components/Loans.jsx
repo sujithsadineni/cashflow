@@ -1,9 +1,16 @@
 import { useState } from 'react';
-import { useDesign } from '../design-context';
+import { invalidate, useApi } from '../use-api';
+import { useDesign } from '../use-design';
 import { LoanProgress } from './LoanProgress';
 import { percentClearedFor, VIVID_LOAN } from '../loan-progress';
-import { api, formatMoney } from '../api';
+import { api, formatMoney, dollarsToCents } from '../api';
 import { Field, TextInput, Select, Button, EditableText, SectionHeader } from './Form';
+import { BalanceTransferStatus, BalanceTransferSuggestions } from './BalanceTransferPanel';
+import { withStatementDates } from '../balance-transfer';
+import { LOAN_TYPE_OPTIONS, EMPTY_LOAN, loanToForm } from '../loan-form';
+import { accountChoices, blankChoice, loanTypeChoices } from '../dropdown-choices';
+import { DatePicker } from './ui/DatePicker';
+import { useNotify } from '../use-notify';
 
 /**
  * Loans: debt tracked outside the normal statement pipeline, with the
@@ -34,50 +41,6 @@ const monthLabel = (iso) => {
   return `${MONTH_ABBR[m - 1]} ${y}`;
 };
 
-export const LOAN_TYPE_OPTIONS = [
-  { value: 'car', label: 'Car' },
-  { value: 'home', label: 'Home' },
-  { value: 'credit_card', label: 'Credit card' },
-  { value: 'balance_transfer', label: 'Balance transfer' },
-  { value: 'other', label: 'Other' },
-];
-
-export const EMPTY_LOAN = {
-  name: '',
-  lender: '',
-  loan_type: 'other',
-  current_balance: '',
-  term_months: '',
-  start_date: '',
-  monthly_payment: '',
-  deadline_date: '',
-  linked_account_id: '',
-};
-
-/** "1234.56" -> 123456. Accepts a leading $ and commas, same laxness as a normal money field. */
-function dollarsToCents(value) {
-  const cleaned = String(value).replace(/[^0-9.-]/g, '');
-  if (cleaned === '') return NaN;
-  return Math.round(parseFloat(cleaned) * 100);
-}
-
-/** 123456 -> "1234.56", for populating a form field from a stored value. */
-const centsToDollarsStr = (cents) => (cents == null ? '' : (cents / 100).toFixed(2));
-
-/** A loan row's stored shape -> this form's field shape. */
-export function loanToForm(loan) {
-  return {
-    name: loan.name ?? '',
-    lender: loan.lender ?? '',
-    loan_type: loan.loan_type ?? 'other',
-    current_balance: centsToDollarsStr(loan.current_balance_cents),
-    term_months: loan.term_months != null ? String(loan.term_months) : '',
-    start_date: loan.start_date ?? '',
-    monthly_payment: centsToDollarsStr(loan.monthly_payment_cents),
-    deadline_date: loan.deadline_date ?? '',
-    linked_account_id: loan.linked_account_id != null ? String(loan.linked_account_id) : '',
-  };
-}
 
 /* ------------------------------------------------------------------
    Form — shared by "add a loan" and "edit a loan". `mode` only
@@ -143,7 +106,7 @@ export function LoanForm({ mode, initial, accounts, submitLabel, savingLabel, on
         </Field>
 
         <Field label="Type" hint="For the icon shown on the loan">
-          <Select value={form.loan_type} onChange={set('loan_type')} options={LOAN_TYPE_OPTIONS} />
+          <Select value={form.loan_type} onChange={set('loan_type')} options={loanTypeChoices(LOAN_TYPE_OPTIONS)} />
         </Field>
 
         <Field
@@ -161,8 +124,13 @@ export function LoanForm({ mode, initial, accounts, submitLabel, savingLabel, on
           />
         </Field>
 
-        <Field label="Deadline" hint="Payoff target, or when a 0% rate ends">
-          <TextInput type="date" value={form.deadline_date} onChange={set('deadline_date')} className="tnum" />
+        <Field
+          label="Deadline"
+          hint={form.loan_type === 'balance_transfer' && form.linked_account_id
+            ? 'Optional — the 0% end date is read from the card’s statements'
+            : 'Payoff target, or when a 0% rate ends'}
+        >
+          <DatePicker value={form.deadline_date} onChange={(value) => set('deadline_date')({ target: { value } })} aria-label="Pay off by" />
         </Field>
 
         <Field label="Monthly payment" hint="Optional — enables the balance estimate below">
@@ -186,7 +154,7 @@ export function LoanForm({ mode, initial, accounts, submitLabel, savingLabel, on
         </Field>
 
         <Field label="Started" hint="Optional — needed for the estimate">
-          <TextInput type="date" value={form.start_date} onChange={set('start_date')} className="tnum" />
+          <DatePicker value={form.start_date} onChange={(value) => set('start_date')({ target: { value } })} aria-label="Start date" />
         </Field>
 
         {accounts.length > 0 && (
@@ -194,7 +162,7 @@ export function LoanForm({ mode, initial, accounts, submitLabel, savingLabel, on
             <Select
               value={form.linked_account_id}
               onChange={set('linked_account_id')}
-              options={[{ value: '', label: '— none —' }, ...accounts.map((a) => ({ value: String(a.id), label: a.name }))]}
+              options={[blankChoice('None'), ...accountChoices(accounts)]}
             />
           </Field>
         )}
@@ -219,68 +187,83 @@ export function LoanForm({ mode, initial, accounts, submitLabel, savingLabel, on
    ------------------------------------------------------------------ */
 
 export function Loans({ accounts, onChange }) {
-  const vivid = useDesign().design === 'vivid';
+  const { design } = useDesign();
+  const vivid = design === 'vivid';
+  // Glass (D244): the pane header names the page, so no section title; a grouped list.
+  const glass = design === 'glass';
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [loans, setLoans] = useState(null);
-  const [error, setError] = useState(null);
+  // useApi (D211): it used to start this request during render.
+  const req = useApi('loans:settings', () => api.loans.list(), { tags: ['loans'] });
+  const loans = req.data ?? null;
+  const error = req.error;
+  // After a create or edit: reload this list, and everything else showing loans.
+  const load = () => invalidate('loans');
 
-  const load = async () => {
-    try {
-      const rows = await api.loans.list();
-      setLoans(rows);
-      setError(null);
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  if (loans === null && !error) load();
-
-  const handleCreated = () => {
+  const notify = useNotify();
+  const handleCreated = (loan) => {
     setAdding(false);
     load();
     onChange?.();
+    notify(`${loan.name} added`, { type: 'success' });
   };
 
-  const handleEdited = () => {
+  const handleEdited = (loan) => {
     setEditingId(null);
     load();
     onChange?.();
+    notify(`${loan.name} saved`, { type: 'success' });
   };
 
-  const updateBalance = async (loan, raw) => {
+  // The inline edits: say it saved, or why it didn't (D232: a failure used to vanish).
+  const quickUpdate = async (loan, patch, what) => {
+    try {
+      await api.loans.update(loan.id, patch);
+      load();
+      onChange?.();
+      notify(`${loan.name}: ${what} updated`, { type: 'success' });
+    } catch (err) {
+      notify(err.message, { type: 'error', title: `Couldn't update ${loan.name}` });
+    }
+  };
+
+  const updateBalance = (loan, raw) => {
     const cents = dollarsToCents(raw);
     if (Number.isNaN(cents)) return;
-    await api.loans.update(loan.id, { current_balance_cents: cents });
-    load();
-    onChange?.();
+    return quickUpdate(loan, { current_balance_cents: cents }, 'balance');
   };
 
-  const updatePayment = async (loan, raw) => {
+  const updatePayment = (loan, raw) => {
     const cents = dollarsToCents(raw);
     if (Number.isNaN(cents)) return;
-    await api.loans.update(loan.id, { monthly_payment_cents: cents });
-    load();
-    onChange?.();
+    return quickUpdate(loan, { monthly_payment_cents: cents }, 'monthly payment');
   };
 
-  const updateDeadline = async (loan, raw) => {
+  const updateDeadline = (loan, raw) => {
     if (raw && !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return;
-    await api.loans.update(loan.id, { deadline_date: raw || null });
-    load();
-    onChange?.();
+    return quickUpdate(loan, { deadline_date: raw || null }, 'deadline');
   };
 
   return (
     <section className="mb-12">
-      <SectionHeader as="h2" title="Loans" emoji="💰" tint="bg-vivid-amber/20">
-        {!adding && loans?.length > 0 && (
-          <Button size="sm" onClick={() => setAdding(true)}>Add another</Button>
-        )}
-      </SectionHeader>
+      {glass ? (
+        <div className="mb-1.5 flex items-end justify-between px-4">
+          <h4 className="text-[13px] text-muted tnum">{loans ? `${loans.length} loan${loans.length === 1 ? '' : 's'}` : ''}</h4>
+          {!adding && loans?.length > 0 && (
+            <button type="button" onClick={() => setAdding(true)} className="text-[13px] font-medium text-info">Add Loan</button>
+          )}
+        </div>
+      ) : (
+        <SectionHeader as="h2" title="Loans" emoji="💰" tint="bg-vivid-amber/20">
+          {!adding && loans?.length > 0 && (
+            <Button size="sm" onClick={() => setAdding(true)}>Add another</Button>
+          )}
+        </SectionHeader>
+      )}
 
       {error && <p className="mb-3 text-sm text-spend">{error}</p>}
+
+      {loans !== null && <BalanceTransferSuggestions onAdded={() => { load(); onChange?.(); }} />}
 
       {adding && (
         <div className="mb-6">
@@ -307,13 +290,13 @@ export function Loans({ accounts, onChange }) {
       )}
 
       {loans?.length > 0 && (
-        <ul className={vivid ? 'flex flex-col gap-3' : 'divide-y divide-rule'}>
+        <ul className={vivid ? 'flex flex-col gap-3' : glass ? 'gs-group' : 'divide-y divide-rule'}>
           {loans.map((loan) => {
             const isEditing = editingId === loan.id;
 
             if (isEditing) {
               return (
-                <li key={loan.id} className="py-3">
+                <li key={loan.id} className={glass ? 'gs-row p-4' : 'py-3'}>
                   <LoanForm
                     mode="edit"
                     initial={loanToForm(loan)}
@@ -332,11 +315,14 @@ export function Loans({ accounts, onChange }) {
                 <span className="text-ink">{loan.name}</span>
                 <button
                   onClick={() => setEditingId(loan.id)}
-                  className="ml-2 text-sm text-faint underline-offset-4 opacity-0 transition-opacity
-                       group-hover:opacity-100 hover:text-ink hover:underline"
+                  className={glass
+                    ? 'ml-2 text-[13px] font-medium text-info'
+                    : `ml-2 text-sm text-faint underline-offset-4 opacity-0 transition-opacity
+                       group-hover:opacity-100 hover:text-ink hover:underline`}
                 >
                   Edit
                 </button>
+                {loan.bt && <BalanceTransferStatus bt={loan.bt} className="mt-0.5" />}
                 <div className="mt-0.5 text-sm text-muted">
                   {loan.lender}
                   {loan.term_months ? `${loan.lender ? ' · ' : ''}${loan.term_months} months` : ''}
@@ -395,14 +381,14 @@ export function Loans({ accounts, onChange }) {
                     {balance}
                   </div>
                   <div className="mt-3">
-                    <LoanProgress type={loan.loan_type} percent={percentClearedFor(loan)} size="sm" />
+                    <LoanProgress type={loan.loan_type} percent={percentClearedFor(withStatementDates(loan))} size="sm" />
                   </div>
                 </li>
               );
             }
 
             return (
-              <li key={loan.id} className="group flex items-baseline justify-between gap-4 py-3">
+              <li key={loan.id} className={`group flex items-baseline justify-between gap-4 py-3 ${glass ? 'gs-row px-4' : ''}`}>
                 {info}
                 {balance}
               </li>

@@ -3,6 +3,9 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
+// index.html reads %VITE_DEMO% (D257); '0' unless `npm run build:demo` set it.
+process.env.VITE_DEMO ??= '0';
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
 

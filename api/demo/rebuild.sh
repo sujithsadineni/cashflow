@@ -14,11 +14,15 @@ trap cleanup EXIT
 dropdb --if-exists cashflow_demo
 createdb cashflow_demo
 for f in db/*.sql; do psql -q -v ON_ERROR_STOP=1 -d cashflow_demo -f "$f" >/dev/null; done
+DATABASE_URL=postgres://localhost/cashflow_demo node api/demo/baseline.mjs
 DATABASE_URL=postgres://localhost/cashflow_demo node api/demo/seed.mjs
 
-(cd api && PORT=4100 DATABASE_URL=postgres://localhost/cashflow_demo LOG_LEVEL=warn exec node src/index.js) > "$TMP/api.log" 2>&1 &
+# The API's clock is the demo's "today" (D257), and it never takes a backup:
+# a backup would copy this machine's statements and show its folder.
+(cd api && PORT=4100 DATABASE_URL=postgres://localhost/cashflow_demo LOG_LEVEL=warn BACKUP_SCHEDULE=off BACKUP_DIR='~/cashflow-backups' \
+  exec node --import ./demo/clock.mjs src/index.js) > "$TMP/api.log" 2>&1 &
 API_PID=$!
-(cd web && API_URL=http://127.0.0.1:4100 exec npx vite --port 5180 --strictPort) > "$TMP/web.log" 2>&1 &
+(cd web && API_URL=http://127.0.0.1:4100 exec npx vite --host 127.0.0.1 --port 5180 --strictPort) > "$TMP/web.log" 2>&1 &
 WEB_PID=$!
 "$CHROME" --headless=new --remote-debugging-port=9334 --user-data-dir="$TMP/chrome" --no-first-run about:blank > /dev/null 2>&1 &
 CHROME_PID=$!
@@ -26,4 +30,4 @@ CHROME_PID=$!
 for url in http://127.0.0.1:4100/api/people http://127.0.0.1:5180/ http://127.0.0.1:9334/json/version; do
   i=0; until curl -sf -o /dev/null "$url"; do i=$((i+1)); [ $i -gt 60 ] && { echo "timed out waiting for $url"; exit 1; }; sleep 0.5; done
 done
-DEMO_CDP=http://127.0.0.1:9334 node api/demo/record.mjs
+DEMO_CDP=http://127.0.0.1:9334 DEMO_DB=postgres://localhost/cashflow_demo node api/demo/record.mjs

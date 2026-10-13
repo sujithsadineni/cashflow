@@ -269,5 +269,28 @@ export function parseStatementCsv(text) {
     return { ok: false, error: 'File has no data rows' };
   }
 
-  return { ok: true, rows };
+  // Card exports (Amex's "Date,Description,Amount" among them) print a
+  // charge positive and a payment negative, from the issuer's side: what
+  // you owe them. Ours is the opposite (negative is money out), so such
+  // a file is flipped whole. The tell is the card's own payment line,
+  // "PAYMENT - THANK YOU" / "PAYMENT RECEIVED", printed negative; a bank
+  // export never words its card payment that way. Debit/credit columns
+  // already say which way each row went, so only a signed amount column
+  // can need this.
+  const flipped = hasAmount && issuerSigned(rows);
+  if (flipped) {
+    for (const row of rows) {
+      if (row.amount_cents) row.amount_cents = -row.amount_cents;
+    }
+  }
+
+  return { ok: true, rows, flipped };
+}
+
+const CARD_PAYMENT = /THANK YOU|PAYMENT RECEIVED/i;
+
+/** True when every card-payment line in the file is negative (and there is one). */
+function issuerSigned(rows) {
+  const payments = rows.filter((r) => r.amount_cents !== null && CARD_PAYMENT.test(r.description ?? ''));
+  return payments.length > 0 && payments.every((r) => r.amount_cents < 0);
 }

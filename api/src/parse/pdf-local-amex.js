@@ -116,18 +116,22 @@ function parseTransactionLines(text, { issuer, cleanMerchantName }) {
   // pdf.js's text layer sometimes emits the exact same visual line
   // twice in a row, differing only in incidental whitespace (confirmed
   // against real statement text) — that's a rendering artifact, not a
-  // second transaction, and gets deduped by exact normalized text.
-  // But a real household statement also has a genuine same-store,
-  // same-day, same-amount purchase on the SAME line text — two
-  // cardholders on a joint account both buying $100 of groceries at
-  // the same place, confirmed against a real case — so the dedupe set
-  // resets at every "Card Ending" sub-header. That keeps it catching
-  // only an immediate back-to-back repeat within one cardholder's own
-  // block, never two different cardholders' otherwise-identical lines.
-  const seenLines = new Set();
+  // second transaction, so an anchor line identical to the line
+  // *immediately* before it is dropped.
+  //
+  // Only immediately (D214). This used to drop any repeat within a
+  // cardholder's block, and a real Blue Cash Everyday statement lost a
+  // genuine second $50 Spectrum charge: same date, same amount, same
+  // text, but with its own "CABLE SVC" continuation line between the
+  // two. The statement's "Total New Charges $100.00" proved both were
+  // real. Any line in between (a continuation, a sub-header) means the
+  // next anchor is a new transaction.
+  let previousLine = null;
 
   for (const line of lines) {
-    if (/Card Ending/i.test(line)) seenLines.clear();
+    const normalized = line.replace(/\s+/g, ' ');
+    const repeat = normalized === previousLine;
+    previousLine = normalized;
 
     const headerMatch = SECTION_HEADERS.find(([p]) => p.test(line));
     if (headerMatch) {
@@ -156,9 +160,7 @@ function parseTransactionLines(text, { issuer, cleanMerchantName }) {
     }
     if (section === null) continue; // a date+money line before any known section started
 
-    const normalizedLine = line.replace(/\s+/g, ' ');
-    if (seenLines.has(normalizedLine)) continue;
-    seenLines.add(normalizedLine);
+    if (repeat) continue;
 
     const description = line
       .replace(dateMatch[0], ' ')

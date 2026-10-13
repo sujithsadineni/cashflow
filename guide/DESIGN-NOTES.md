@@ -47,7 +47,7 @@ private build log; the reasoning that matters is summarised here.
 - **No component library.** A handful of shared components (`DataTable`,
   `DetailDialog`) cover the app; Tailwind tokens carry the design.
 
-## Two designs
+## Three designs
 
 - **Classic** comes from greenbar ledger paper: a quiet surface, two
   saturated colours with fixed meanings (oxblood = money out, pine = money
@@ -55,6 +55,11 @@ private build log; the reasoning that matters is summarised here.
 - **Vivid** is an opt-in, per-browser alternative with a wider palette, emoji
   and `motion` animation (including a synthesised-sound welcome page). It's
   deliberately isolated behind `useDesign()` so Classic stays calm.
+- **Glass** follows Apple's Liquid Glass: translucent material only on what
+  floats (sidebar, toolbars, popovers, toasts) over a soft backdrop, solid
+  content, the system font and spring motion, with an intro of its own. It
+  honours Reduce Transparency, Increase Contrast and Reduce Motion.
+- **Light or dark** applies to every design; each repoints the same tokens.
 
 ## The demo
 

@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { PrivacyContext } from './use-privacy';
 import { setGlobalPrivacyMode } from './api';
 
 /**
@@ -8,7 +9,6 @@ import { setGlobalPrivacyMode } from './api';
  */
 const STORAGE_KEY = 'cashflow_privacy_mode';
 
-const PrivacyContext = createContext({ privacyMode: false, setPrivacyMode: () => {} });
 
 export function PrivacyProvider({ children }) {
   const [privacyMode, setPrivacyModeState] = useState(() => {
@@ -42,4 +42,3 @@ export function PrivacyProvider({ children }) {
   );
 }
 
-export const usePrivacy = () => useContext(PrivacyContext);

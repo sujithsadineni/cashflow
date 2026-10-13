@@ -1,8 +1,9 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MerchantAvatar } from './MerchantAvatar';
-import { useDesign } from '../design-context';
+import { useDesign } from '../use-design';
 import { VividWelcome } from './welcome/VividWelcome';
+import { GlassWelcome } from './welcome/GlassWelcome';
 
 /**
  * The first thing the app shows, every time — a cover page, not a
@@ -144,7 +145,12 @@ function FeatureCard({ label, tone, fx, fy, body, merchants, delay, soundOn, bli
 }
 
 export function Welcome(props) {
-  return useDesign().design === 'vivid' ? <VividWelcome {...props} /> : <ClassicWelcome {...props} />;
+  // Outside the Layout, so it names the tab itself (D232).
+  useEffect(() => { document.title = 'cashflow'; }, []);
+  const { design } = useDesign();
+  if (design === 'vivid') return <VividWelcome {...props} />;
+  if (design === 'glass') return <GlassWelcome {...props} />;
+  return <ClassicWelcome {...props} />;
 }
 
 function ClassicWelcome({ hasData, loaded }) {
@@ -187,8 +193,8 @@ function ClassicWelcome({ hasData, loaded }) {
         </p>
 
         <div className="mt-12 grid w-full grid-cols-1 gap-3 sm:grid-cols-2">
-          {CARDS.map((c, i) => (
-            <FeatureCard key={c.key} {...c} delay={CARDS_START + i * CARDS_STAGGER} soundOn={soundOn} blip={blip} />
+          {CARDS.map(({ key, ...card }, i) => (
+            <FeatureCard key={key} {...card} delay={CARDS_START + i * CARDS_STAGGER} soundOn={soundOn} blip={blip} />
           ))}
         </div>
 

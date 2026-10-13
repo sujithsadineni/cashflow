@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { useDesign } from '../../design-context';
+import { useDesign } from '../../use-design';
 import { Segmented } from '../Form';
 
 /**
@@ -78,7 +78,7 @@ export function DetailDialog({ title, emoji, tint = 'bg-band', hero, side, secti
   );
 
   return (
-    <div className="fixed inset-0 z-20 flex items-center justify-center bg-ink/30 p-4" onClick={onClose}>
+    <div className="modal-scrim fixed inset-0 z-20 flex items-center justify-center bg-ink/30 p-4" onClick={onClose}>
       <motion.div
         role="dialog"
         aria-modal="true"

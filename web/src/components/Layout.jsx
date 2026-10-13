@@ -1,10 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
-import { usePrivacy } from '../privacy-context';
-import { useDesign } from '../design-context';
+import { ErrorBoundary } from './ErrorBoundary';
+import { useApi } from '../use-api';
+import { usePrivacy } from '../use-privacy';
+import { useDesign } from '../use-design';
 import { motion } from 'motion/react';
 import { api } from '../api';
 import { SupportButton } from './support/SupportButton';
+import { NAV_GROUPS, pageTitle } from '../nav';
+import { AppearanceToggle } from './AppearanceToggle';
 
 /**
  * A left sidebar rather than a top bar: it scales to more items
@@ -19,6 +23,12 @@ const iconProps = { width: 16, height: 16, viewBox: '0 0 16 16', fill: 'none', '
 const strokeProps = { stroke: 'currentColor', strokeWidth: 1.4, strokeLinecap: 'round', strokeLinejoin: 'round' };
 
 const ICONS = {
+  review: (
+    <svg {...iconProps}>
+      <rect x="2" y="2" width="12" height="12" rx="2" {...strokeProps} />
+      <path d="M5 8.2l2 2 4-4.4" {...strokeProps} />
+    </svg>
+  ),
   overview: (
     <svg {...iconProps}>
       <path d="M1.5 8.5L8 2l6.5 6.5" {...strokeProps} />
@@ -71,24 +81,6 @@ const ICONS = {
   ),
 };
 
-// Two groups — viewing money, then managing the data behind it —
-// split by a plain rule rather than a text label. A "MONEY" /
-// "SYSTEM" eyebrow would just restate what the icons and grouping
-// already say, and ALL-CAPS labels are on this app's avoid-list.
-const NAV_GROUPS = [
-  [
-    { to: '/overview', label: 'Overview', end: true, icon: 'overview' },
-    { to: '/alerts', label: 'Alerts', icon: 'alerts' },
-    { to: '/cards', label: 'Cards', icon: 'cards' },
-    { to: '/transactions', label: 'Transactions', icon: 'transactions' },
-    { to: '/recurring', label: 'Recurring', icon: 'recurring' },
-  ],
-  [
-    { to: '/import', label: 'Import', icon: 'import' },
-    { to: '/activity', label: 'Activity', icon: 'activity' },
-    { to: '/settings', label: 'Settings', icon: 'settings' },
-  ],
-];
 
 // Vivid (Settings → Design): an emoji in a tinted tile per item, each
 // item with its own color — asked for directly ("new icons with nice
@@ -101,6 +93,7 @@ const VIVID_NAV = {
   alerts: { emoji: '🔔', tile: 'bg-vivid-red/15', active: 'bg-vivid-red/10', bar: 'bg-vivid-red' },
   cards: { emoji: '💳', tile: 'bg-vivid-blue/15', active: 'bg-vivid-blue/10', bar: 'bg-vivid-blue' },
   transactions: { emoji: '🧾', tile: 'bg-vivid-teal/15', active: 'bg-vivid-teal/10', bar: 'bg-vivid-teal' },
+  review: { emoji: '✅', tile: 'bg-vivid-green/15', active: 'bg-vivid-green/10', bar: 'bg-vivid-green' },
   recurring: { emoji: '🔁', tile: 'bg-vivid-purple/15', active: 'bg-vivid-purple/10', bar: 'bg-vivid-purple' },
   import: { emoji: '📥', tile: 'bg-vivid-amber/20', active: 'bg-vivid-amber/10', bar: 'bg-vivid-amber' },
   activity: { emoji: '📈', tile: 'bg-vivid-pink/15', active: 'bg-vivid-pink/10', bar: 'bg-vivid-pink' },
@@ -114,7 +107,8 @@ const navEmojiHover = {
   hover: { rotate: [0, -14, 10, -5, 0], scale: [1, 1.3, 1.1], y: [0, -3, 0], transition: { duration: 0.7, ease: 'easeOut' } },
 };
 
-function VividNavItem({ to, label, end, icon, alertBadge }) {
+function VividNavItem({ to, label, end, icon, badges }) {
+  const badge = badges[icon];
   const v = VIVID_NAV[icon];
   return (
     <NavLink
@@ -137,14 +131,14 @@ function VividNavItem({ to, label, end, icon, alertBadge }) {
             {v.emoji}
           </motion.span>
           {label}
-          {icon === 'alerts' && alertBadge.count > 0 && (
+          {badge?.count > 0 && (
             <span
-              key={alertBadge.count}
+              key={badge.count}
               className={`animate-pop-in ml-auto flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-semibold tnum text-white ${
-                alertBadge.urgent ? 'bg-vivid-red' : 'bg-vivid-amber'
+                badge.urgent ? 'bg-vivid-red' : 'bg-vivid-amber'
               }`}
             >
-              {alertBadge.count}
+              {badge.count}
             </span>
           )}
         </motion.span>
@@ -194,9 +188,22 @@ function useAlertBadge() {
   return state;
 }
 
+/**
+ * Things waiting in Review (D212): findings plus merchant names, the same
+ * count the old Review button on Transactions showed. Reloads on every
+ * page change and whenever an approval invalidates transactions.
+ */
+function useReviewBadge() {
+  const location = useLocation();
+  const req = useApi(`review-count:${location.pathname}`, () => Promise.all([api.transactionReview.count(), api.merchantReview.count()]), { tags: ['transactions', 'review'] });
+  const [findings, merchants] = req.data ?? [{ count: 0 }, { count: 0 }];
+  return { count: (findings?.count ?? 0) + (merchants?.count ?? 0), urgent: false };
+}
+
+// The name replays this design's own intro (D236, the owner's call: reverses D232.4).
 function Brand({ vivid }) {
   return (
-    <Link to="/" className="flex items-center gap-2 text-lg font-medium tracking-tight text-ink">
+    <Link to="/" aria-label="cashflow: play the intro" title="Play the intro" className="flex items-center gap-2 text-lg font-medium tracking-tight text-ink">
       {vivid && (
         <span className="grid size-5 grid-cols-2 gap-0.5" aria-hidden="true">
           <span className="rounded-[3px] bg-vivid-green" />
@@ -223,6 +230,13 @@ export function Layout({ connection, database }) {
   const vivid = design === 'vivid';
   const location = useLocation();
   const alertBadge = useAlertBadge();
+  const reviewBadge = useReviewBadge();
+  const badges = { alerts: alertBadge, review: reviewBadge };
+
+  // The browser tab says where you are, with the sidebar's counts (D232).
+  useEffect(() => {
+    document.title = pageTitle(location.pathname, location.search, { '/alerts': alertBadge.count, '/review': reviewBadge.count });
+  }, [location.pathname, location.search, alertBadge.count, reviewBadge.count]);
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -234,7 +248,7 @@ export function Layout({ connection, database }) {
 
   return (
     <div className="flex min-h-screen flex-col bg-paper md:flex-row">
-      <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-rule bg-paper/95 px-4 py-3 backdrop-blur md:hidden">
+      <header className="app-topbar sticky top-0 z-20 flex items-center gap-3 border-b border-rule bg-paper/95 px-4 py-3 backdrop-blur md:hidden">
         <button
           onClick={() => setMenuOpen(true)}
           aria-label="Open menu"
@@ -247,8 +261,9 @@ export function Layout({ connection, database }) {
           </svg>
         </button>
         <Brand vivid={vivid} />
+        <AppearanceToggle className="ml-auto" />
         {alertBadge.count > 0 && (
-          <Link to="/alerts" className={`ml-auto flex h-6 min-w-6 items-center justify-center rounded-full px-2 text-xs font-semibold tnum text-paper ${alertBadge.urgent ? 'bg-spend' : 'bg-warn'}`} aria-label={`${alertBadge.count} alerts`}>
+          <Link to="/alerts" className={`flex h-6 min-w-6 items-center justify-center rounded-full px-2 text-xs font-semibold tnum text-paper ${alertBadge.urgent ? 'bg-spend' : 'bg-warn'}`} aria-label={`${alertBadge.count} alerts`}>
             {alertBadge.count}
           </Link>
         )}
@@ -258,7 +273,7 @@ export function Layout({ connection, database }) {
 
       <aside
         id="app-sidebar"
-        className={`fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col overflow-y-auto border-r border-rule bg-paper px-5 py-8 shadow-lg transition-transform duration-200
+        className={`app-sidebar fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col overflow-y-auto border-r border-rule bg-paper px-5 py-8 shadow-lg transition-transform duration-200
                     md:static md:z-auto md:w-52 md:translate-x-0 md:bg-band/40 md:shadow-none
                     ${menuOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
@@ -273,31 +288,31 @@ export function Layout({ connection, database }) {
         <nav className="mt-8 flex flex-col gap-4" onClick={() => setMenuOpen(false)}>
           {NAV_GROUPS.map((group, i) => (
             <div key={i} className={`flex flex-col gap-1 ${i > 0 ? 'border-t border-rule pt-4' : ''}`}>
-              {vivid && group.map((item) => <VividNavItem key={item.to} {...item} alertBadge={alertBadge} />)}
+              {vivid && group.map((item) => <VividNavItem key={item.to} {...item} badges={badges} />)}
               {!vivid && group.map(({ to, label, end, icon }) => (
                 <NavLink
                   key={to}
                   to={to}
                   end={end}
                   className={({ isActive }) =>
-                    `relative -mx-2 flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors ${
+                    `nav-item relative -mx-2 flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors ${
                       isActive ? 'bg-raised font-medium text-ink shadow-sm' : 'text-muted hover:bg-raised/60 hover:text-ink'
                     }`
                   }
                 >
                   {({ isActive }) => (
                     <>
-                      {isActive && <span className="absolute -left-5 top-1 bottom-1 w-[3px] rounded-r-full bg-ink" />}
-                      <span className="shrink-0">{ICONS[icon]}</span>
+                      {isActive && <span className="nav-bar absolute -left-5 top-1 bottom-1 w-[3px] rounded-r-full bg-ink" />}
+                      <span className="nav-icon shrink-0">{ICONS[icon]}</span>
                       {label}
-                      {icon === 'alerts' && alertBadge.count > 0 && (
+                      {badges[icon]?.count > 0 && (
                         <span
-                          key={alertBadge.count}
+                          key={badges[icon].count}
                           className={`animate-pop-in ml-auto flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tnum text-paper ${
-                            alertBadge.urgent ? 'bg-spend' : 'bg-warn'
+                            badges[icon].urgent ? 'bg-spend' : 'bg-warn'
                           }`}
                         >
-                          {alertBadge.count}
+                          {badges[icon].count}
                         </span>
                       )}
                     </>
@@ -315,12 +330,15 @@ export function Layout({ connection, database }) {
               Privacy mode — names and numbers hidden
             </div>
           )}
+          <AppearanceToggle withLabel className="-mx-2 self-start" />
           <ConnectionDot state={connection} detail={database} />
         </div>
       </aside>
 
       <main className="min-w-0 flex-1 px-4 py-6 md:px-8 md:py-10">
-        <div className="mx-auto max-w-5xl">
+        {/* Transactions is a wide table, so it uses the screen (D237); every other page keeps a reading width. */}
+        {/* Glass Settings and Review set their own width (80%, D245, D249), so they skip the 1024px cap. */}
+        <div className={`mx-auto ${location.pathname === '/transactions' ? 'max-w-[112rem]' : design === 'glass' && ['/settings', '/review'].includes(location.pathname) ? 'max-w-none' : 'max-w-5xl'}`}>
           {import.meta.env.VITE_DEMO === '1' && (
             <p className="mb-6 rounded-lg border border-rule bg-band px-4 py-2 text-sm text-muted">
               Demo — an invented household, not real data. Look around; changes aren't saved.
@@ -328,6 +346,10 @@ export function Layout({ connection, database }) {
           )}
           {/* Vivid: each page rises in when you navigate to it (keyed by
               path, so switching pages replays it). ~0.4s, once per visit. */}
+          {/* A page that crashes shows a message, not a white screen (D206);
+              keyed by path so another page starts fresh. */}
+          <ErrorBoundary key={location.pathname}>
+          <Suspense fallback={<p className="text-sm text-muted">Loading…</p>}>
           {vivid ? (
             <motion.div
               key={location.pathname}
@@ -340,6 +362,8 @@ export function Layout({ connection, database }) {
           ) : (
             <Outlet />
           )}
+          </Suspense>
+          </ErrorBoundary>
         </div>
       </main>
       <SupportButton />

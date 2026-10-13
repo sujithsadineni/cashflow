@@ -40,6 +40,10 @@ const KNOWN_ISSUERS = [
   'bank of america', 'bilt', 'chase', 'jpmorgan', 'wells fargo', 'citibank', 'citi',
   'capital one', 'discover', 'american express', 'amex', 'us bank',
   'pnc', 'truist', 'cardless',
+  // Last on purpose: a Chase or BofA statement can mention Robinhood in a
+  // transaction line, and the first issuer found wins.
+  'robinhood',
+  'barclays', // \b keeps "Barclaycard" (a payment line elsewhere) from matching
 ];
 
 /**
@@ -52,7 +56,25 @@ const KNOWN_ISSUERS = [
  * while a real "Chase Bank" or "JPMorgan Chase" reference still has
  * word boundaries on both sides.
  */
+/**
+ * A bank's own legal footer, checked before the name search (D216). A
+ * SoFi statement lists the household's card payments on page 1 ("BILT
+ * PAYMENT", "AMEX EPAYMENT", "BANK OF AMERICA PAYMENT"), so the first
+ * name found was another bank's, and SoFi statements were guessed as
+ * Bilt or Bank of America. A footer only the issuer itself prints
+ * settles it.
+ */
+const SIGNATURES = [
+  ['sofi', /SoFi Checking and Savings accounts are offered through SoFi Bank|SoFi Bank, N\.A\./i],
+  // Every Apple Card page says so; its activity often names other banks ("account ending in …").
+  ['apple card', /Apple Card is issued by Goldman Sachs Bank USA/i],
+  // Both Zolve layouts (D221): the newer footer, and the older payment stub's site.
+  ['zolve', /Zolve Credit Cards are issued by|www\.zolve\.com/i],
+];
+
 export function guessIssuerFromPageOne(pageOneText) {
+  const signed = SIGNATURES.find(([, sig]) => sig.test(pageOneText ?? ''));
+  if (signed) return signed[0];
   const lower = (pageOneText ?? '').toLowerCase();
   return KNOWN_ISSUERS.find((name) => new RegExp(`\\b${name}\\b`).test(lower)) ?? null;
 }

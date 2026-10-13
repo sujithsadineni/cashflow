@@ -25,7 +25,13 @@ import { extractBofaLocally } from './pdf-local-bofa.js';
 import { extractAmexLocally } from './pdf-local-amex.js';
 import { extractChaseLocally } from './pdf-local-chase.js';
 import { extractBiltLocally } from './pdf-local-bilt.js';
+import { extractRobinhoodLocally } from './pdf-local-robinhood.js';
+import { extractBarclaysLocally } from './pdf-local-barclays.js';
+import { extractSofiLocally } from './pdf-local-sofi.js';
+import { extractAppleLocally } from './pdf-local-apple.js';
+import { extractZolveLocally } from './pdf-local-zolve.js';
 import { cleanMerchantName } from './local-merchants.js';
+import { extractPromos } from './promos.js';
 
 const ISSUER_PARSERS = [
   { guess: 'bank of america', parse: extractBofaLocally },
@@ -33,6 +39,11 @@ const ISSUER_PARSERS = [
   { guess: 'amex', parse: extractAmexLocally },
   { guess: 'chase', parse: extractChaseLocally },
   { guess: 'bilt', parse: extractBiltLocally },
+  { guess: 'robinhood', parse: extractRobinhoodLocally },
+  { guess: 'barclays', parse: extractBarclaysLocally },
+  { guess: 'sofi', parse: extractSofiLocally },
+  { guess: 'apple card', parse: extractAppleLocally },
+  { guess: 'zolve', parse: extractZolveLocally },
 ];
 
 /**
@@ -56,8 +67,8 @@ export async function extractStatementFromPdfLocally(buffer, categoryNames, pass
     return {
       ok: false,
       error: issuerGuess
-        ? `Local parsing isn't built for ${issuerGuess} yet — use "Parse with Claude" instead.`
-        : `Couldn't identify the issuer from page 1 — local parsing only knows Bank of America and American Express so far. Use "Parse with Claude" instead.`,
+        ? `The free reader doesn't know ${issuerGuess} statements yet.`
+        : `It isn't from a bank the free reader knows (Bank of America, American Express, Chase, Bilt, Robinhood, Barclays, SoFi, Apple Card, Zolve).`,
     };
   }
 
@@ -78,7 +89,7 @@ export async function extractStatementFromPdfLocally(buffer, categoryNames, pass
   return {
     ok: true,
     account: result.account,
-    statement: result.statement,
+    statement: { ...result.statement, promos: extractPromos(pages) },
     rows: result.rows.map((r) => ({
       posted_date: r.posted_date,
       description: redactPan(r.description),
@@ -94,4 +105,4 @@ export async function extractStatementFromPdfLocally(buffer, categoryNames, pass
 }
 
 /** Which issuers local parsing currently supports — for the frontend to show upfront, before a file is even chosen. */
-export const LOCAL_PARSER_ISSUERS = ['Bank of America', 'American Express', 'Chase', 'Bilt'];
+export const LOCAL_PARSER_ISSUERS = ['Bank of America', 'American Express', 'Chase', 'Bilt', 'Robinhood', 'Barclays', 'SoFi', 'Apple Card', 'Zolve'];

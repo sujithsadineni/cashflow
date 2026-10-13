@@ -1,5 +1,6 @@
-import { createContext, useContext, useEffect, useState } from 'react';
-import { DESIGNS, DEFAULT_DESIGN } from './designs';
+import { useEffect, useState } from 'react';
+import { DesignContext } from './use-design';
+import { APPEARANCES, DEFAULT_APPEARANCE, DESIGNS, DEFAULT_DESIGN } from './designs';
 
 /**
  * Which look the app renders in. Per-browser (localStorage), same as
@@ -11,35 +12,50 @@ import { DESIGNS, DEFAULT_DESIGN } from './designs';
  * `design === 'vivid'`; everything else just keeps rendering Classic.
  */
 const STORAGE_KEY = 'cashflow_design';
+// Light / dark / auto (D234). index.html reads the same key before React
+// starts, so a dark page never flashes white on load.
+const APPEARANCE_KEY = 'cashflow_appearance';
 
-const DesignContext = createContext({ design: DEFAULT_DESIGN, setDesign: () => {} });
+const read = (key, valid, fallback) => {
+  try {
+    const saved = localStorage.getItem(key);
+    return valid.some((d) => d.value === saved) ? saved : fallback;
+  } catch {
+    return fallback;
+  }
+};
+const write = (key, value) => {
+  try { localStorage.setItem(key, value); } catch { /* blocked storage: applies for this session */ }
+};
+const systemDark = () => window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
+
 
 export function DesignProvider({ children }) {
-  const [design, setDesignState] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      return DESIGNS.some((d) => d.value === saved) ? saved : DEFAULT_DESIGN;
-    } catch {
-      return DEFAULT_DESIGN;
-    }
-  });
+  const [design, setDesignState] = useState(() => read(STORAGE_KEY, DESIGNS, DEFAULT_DESIGN));
+  const [appearance, setAppearanceState] = useState(() => read(APPEARANCE_KEY, APPEARANCES, DEFAULT_APPEARANCE));
+  const [osDark, setOsDark] = useState(systemDark);
 
-  const setDesign = (value) => {
-    setDesignState(value);
-    try {
-      localStorage.setItem(STORAGE_KEY, value);
-    } catch {
-      // Blocked storage: the choice still applies for this session.
-    }
-  };
+  const setDesign = (value) => { setDesignState(value); write(STORAGE_KEY, value); };
+  const setAppearance = (value) => { setAppearanceState(value); write(APPEARANCE_KEY, value); };
 
-  // Mirrored onto <html> so plain CSS can key off it too — index.css
-  // repoints the shared color variables for Vivid (D141).
+  // "Auto" tracks the computer's setting live, so switching the Mac to dark
+  // at sunset turns the app dark too.
+  useEffect(() => {
+    const query = window.matchMedia?.('(prefers-color-scheme: dark)');
+    if (!query) return undefined;
+    const onChange = () => setOsDark(query.matches);
+    query.addEventListener('change', onChange);
+    return () => query.removeEventListener('change', onChange);
+  }, []);
+
+  const theme = appearance === 'system' ? (osDark ? 'dark' : 'light') : appearance;
+
+  // Mirrored onto <html> so plain CSS can key off them: index.css repoints
+  // the shared color variables per design (D141) and per theme (D234).
   useEffect(() => {
     document.documentElement.dataset.design = design;
-  }, [design]);
+    document.documentElement.dataset.theme = theme;
+  }, [design, theme]);
 
-  return <DesignContext.Provider value={{ design, setDesign }}>{children}</DesignContext.Provider>;
+  return <DesignContext.Provider value={{ design, setDesign, appearance, setAppearance, theme }}>{children}</DesignContext.Provider>;
 }
-
-export const useDesign = () => useContext(DesignContext);

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { suggestHistoricalCategories } from './historical-category.js';
+import { suggestHistoricalCategories, suggestHistoricalTypes } from './historical-category.js';
 
 /** A fake client whose .query() returns canned rows for each of the two queries this module runs. */
 function fakeClient({ byMerchant = [], byDescription = [] } = {}) {
@@ -18,7 +18,7 @@ test('suggests a category by merchant + txn_type when history is consistent', as
   const client = fakeClient({
     byMerchant: [{ merchant: 'Costco', txn_type: 'purchase', category_name: 'Costco', count: 43 }],
   });
-  const rows = [{ merchant: 'Costco', txn_type: 'purchase', description: 'COSTCO WHSE #1206' }];
+  const rows = [{ merchant: 'Costco', txn_type: 'purchase', description: 'COSTCO WHSE #1204' }];
   const result = await suggestHistoricalCategories(rows, client);
   assert.equal(result.get(0), 'Costco');
 });
@@ -46,7 +46,7 @@ test('picks the most common category when history has a mix, not just the first 
       { merchant: 'Costco', txn_type: 'purchase', category_name: 'Groceries', count: 5 },
     ],
   });
-  const rows = [{ merchant: 'Costco', txn_type: 'purchase', description: 'COSTCO WHSE #0249' }];
+  const rows = [{ merchant: 'Costco', txn_type: 'purchase', description: 'COSTCO WHSE #0103' }];
   const result = await suggestHistoricalCategories(rows, client);
   assert.equal(result.get(0), 'Costco');
 });
@@ -87,7 +87,38 @@ test('does not run the description query at all when every row already has a mer
       return { rows: [] };
     },
   };
-  const rows = [{ merchant: 'Costco', txn_type: 'purchase', description: 'COSTCO WHSE #1206' }];
+  const rows = [{ merchant: 'Costco', txn_type: 'purchase', description: 'COSTCO WHSE #1204' }];
   await suggestHistoricalCategories(rows, client);
   assert.equal(descriptionQueryRan, false);
+});
+
+test('learned types: strong history overrides the parser, weak or mixed history does not, Zelle is skipped', async () => {
+  const client = {
+    query: async () => ({
+      rows: [
+        { merchant: 'Food Lion', norm: 'offer food lion', out: false, txn_type: 'refund', count: 12 },
+        { merchant: 'Shell', norm: 'shell', out: true, txn_type: 'purchase', count: 2 }, // only 2: not enough
+        { merchant: 'Target', norm: 'target', out: true, txn_type: 'purchase', count: 3 },
+        { merchant: 'Target', norm: 'target', out: true, txn_type: 'fee', count: 2 }, // 60%: mixed
+      ],
+    }),
+  };
+  const rows = [
+    { merchant: 'Food Lion', description: 'Offer: Food Lion', amount_cents: 700, txn_type: 'cashback' },
+    { merchant: 'Food Lion', description: 'FOOD LION #1', amount_cents: -700, txn_type: 'purchase' }, // other direction: no history
+    { merchant: 'Shell', description: 'SHELL OIL', amount_cents: -4000, txn_type: 'fee' },
+    { merchant: 'Target', description: 'TARGET', amount_cents: -100, txn_type: 'fee' },
+    { merchant: null, description: 'Zelle payment to SAM', amount_cents: -100, txn_type: 'transfer' },
+  ];
+  const learned = await suggestHistoricalTypes(rows, client);
+  assert.deepEqual([...learned], [[0, 'refund']]);
+});
+
+test('learned types: a row the parser left unnamed learns from past rows with the same printed line', async () => {
+  const client = { query: async () => ({ rows: [{ merchant: 'Planet Fitness', norm: 'planet fitness club fees ', out: true, txn_type: 'fee', count: 4 }] }) };
+  const learned = await suggestHistoricalTypes(
+    [{ merchant: null, description: 'PLANET FITNESS CLUB FEES', amount_cents: -4900, txn_type: 'purchase' }],
+    client
+  );
+  assert.deepEqual([...learned], [[0, 'fee']]);
 });

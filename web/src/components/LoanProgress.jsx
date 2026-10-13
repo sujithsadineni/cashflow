@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { loanTypeIcon } from './LoanIcons';
-import { useDesign } from '../design-context';
+import { LoanTypeIcon } from './LoanIcons';
+import { useDesign } from '../use-design';
 import { VIVID_LOAN, loanInsightsFor } from '../loan-progress';
 import { formatMoney } from '../api';
 
@@ -16,7 +16,7 @@ import { formatMoney } from '../api';
  * both travel a road; a card loan (credit card or a 0% balance
  * transfer) rings down instead, since a promo deadline reads better
  * as a countdown than a distance. Which icon rides the track still
- * comes from `loanTypeIcon`, the same icon set the list and detail
+ * comes from `LoanTypeIcon`, the same icon set the list and detail
  * views already use, so the glyph never drifts from what the rest of
  * the app already calls this loan.
  */
@@ -219,7 +219,7 @@ export function LoanProgress({ type, percent, size = 'sm' }) {
   }
   const pct = Math.min(Math.max(percent, 0), 100);
   const shape = TRACK_BY_TYPE[type] ?? 'bar';
-  const icon = loanTypeIcon(type);
+  const icon = <LoanTypeIcon type={type} />;
   const dims = size === 'lg' ? { height: 8, ring: 60 } : { height: 5, ring: 38 };
 
   return (

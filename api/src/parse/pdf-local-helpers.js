@@ -11,9 +11,18 @@
  * over incidental resemblance, not real duplication.
  */
 
-const MONEY_RE = /(-)?\s*\$?\s*((?:\d{1,3}(?:,\d{3})*)?\.\d{2})/;
+/**
+ * One printed money amount: optional minus (a space after it is fine),
+ * optional $, then either comma-grouped thousands ("1,234.56") or plain
+ * digits ("1234.56", ".28"). The plain-digits branch matters: the
+ * comma-only version matched "1234.56" from its "234.56" and silently
+ * dropped the thousands (D169). Shared as source text so every parser's
+ * label regex uses the same definition.
+ */
+export const MONEY_SOURCE = '-?\\s*\\$?\\s*(?:\\d{1,3}(?:,\\d{3})+|\\d*)\\.\\d{2}';
+const MONEY_RE = /(-)?\s*\$?\s*((?:\d{1,3}(?:,\d{3})+|\d*)\.\d{2})/;
 
-/** "$1,234.56" / "-1,234.56" / "1234.56" -> integer cents, signed. */
+/** "$1,234.56" / "-1,234.56" / "1234.56" / ".28" -> integer cents, signed. */
 export function parseMoney(str) {
   const m = str.match(MONEY_RE);
   if (!m) return null;
@@ -44,7 +53,7 @@ export function mergeContinuation(row, line) {
  * this way.
  */
 export function extractAmountAfterLabel(text, label) {
-  const re = new RegExp(`${label}[ \\t]+(-?\\s*\\$?\\s*(?:\\d{1,3}(?:,\\d{3})*)?\\.\\d{2})`, 'i');
+  const re = new RegExp(`${label}[ \\t]+(${MONEY_SOURCE})`, 'i');
   for (const line of text.split('\n')) {
     const m = line.match(re);
     if (m) return parseMoney(m[1]);
@@ -85,6 +94,10 @@ const CARD_PAYMENT_PATTERNS = [
   /Mobile Banking payment to CRD/i,
   /AMERICAN EXPRESS/i, /BARCLAYCARD/i, /APPLECARD/i, /ROBINHOOD MONEY/i,
   /CHASE CREDIT/i, /DISCOVER/i, /CITI ?CARD/i, /SYNCHRONY/i, /CAPITAL ?ONE/i, /ZOLVE/i,
+  // How SoFi (and Chase) print a card bill (D216). "BILT CARD PMT" only:
+  // "BILT CARD HOUSING" and "BILT PAYMENT BILTRENT" are rent paid through
+  // Bilt, a purchase, and must not match.
+  /\bAMEX EPAYMENT\b/i, /\bBILT CARD PMT\b/i, /\bBANK OF AMERICA PAYMENT\b/i,
 ];
 
 // A literal "TRANSFER" in an ACH transaction code ("APPLE GS SAVINGS

@@ -8,47 +8,67 @@
  */
 
 import { useState } from 'react';
-import { useDesign } from '../design-context';
+import { FieldContext, useInField } from '../field-context';
+import { useDesign } from '../use-design';
+import { Dropdown } from './ui/Dropdown';
 
 const controlClasses =
   'w-full rounded-md border border-rule bg-raised px-3 py-2 text-ink ' +
   'placeholder:text-faint transition-colors focus:border-earn focus:outline-none';
 
-export function Field({ label, error, hint, children }) {
+// Inside a Field, the control is bare: the Field draws the box (D231).
+const bareClasses = 'w-full min-w-0 bg-transparent p-0 leading-snug text-ink placeholder:text-faint focus:outline-none';
+
+/**
+ * A form field with a floating label (D231, the Transactions filter look,
+ * D230): a soft box with its label small at the top and the control on the
+ * line under it. Clicking anywhere in the box focuses (or opens) the
+ * control. It rings green while focused or open, red on an error; the hint
+ * or error sits under the box.
+ */
+export function Field({ label, error, hint, children, className = '' }) {
   return (
-    <label className="block">
-      <span className="mb-1.5 block text-sm text-muted">{label}</span>
-      {children}
-      {error && <span className="mt-1 block text-sm text-spend">{error}</span>}
-      {hint && !error && <span className="mt-1 block text-sm text-faint">{hint}</span>}
-    </label>
+    <div className={className}>
+      <label
+        className={`field-box flex min-h-[3.375rem] cursor-text flex-col justify-center gap-0.5 rounded-xl border px-3 py-1.5 transition-colors
+                    focus-within:border-earn focus-within:bg-raised focus-within:ring-4 focus-within:ring-earn/15
+                    has-[[aria-expanded=true]]:border-earn has-[[aria-expanded=true]]:bg-raised has-[[aria-expanded=true]]:ring-4 has-[[aria-expanded=true]]:ring-earn/15
+                    ${error ? 'border-spend bg-raised' : 'border-transparent bg-band hover:border-rule-str'}`}
+      >
+        <span className="text-[0.6875rem] leading-tight text-muted">{label}</span>
+        <FieldContext.Provider value={true}>{children}</FieldContext.Provider>
+      </label>
+      {error && <span className="mt-1 block px-3 text-sm text-spend">{error}</span>}
+      {hint && !error && <span className="mt-1 block px-3 text-xs text-faint">{hint}</span>}
+    </div>
   );
 }
 
-export function TextInput({ invalid, type = 'text', ...props }) {
+// An extra className adds to the control's own classes; it used to replace
+// them (props were spread after), leaving a bare unstyled input (D185).
+export function TextInput({ invalid, type = 'text', className = '', ...props }) {
+  const inField = useInField();
+  if (inField) return <input type={type} className={`${bareClasses} ${className}`} aria-invalid={invalid || undefined} {...props} />;
   return (
     <input
       type={type}
-      className={`${controlClasses} ${invalid ? 'border-spend' : ''}`}
+      className={`${controlClasses} ${invalid ? 'border-spend' : ''} ${className}`}
       {...props}
     />
   );
 }
 
 export function TextArea({ invalid, rows = 5, ...props }) {
+  const inField = useInField();
+  if (inField) return <textarea rows={rows} className={`${bareClasses} resize-y py-0.5`} aria-invalid={invalid || undefined} {...props} />;
   return <textarea rows={rows} className={`${controlClasses} resize-y ${invalid ? 'border-spend' : ''}`} {...props} />;
 }
 
-export function Select({ options, invalid, ...props }) {
-  return (
-    <select className={`${controlClasses} ${invalid ? 'border-spend' : ''}`} {...props}>
-      {options.map((option) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
-    </select>
-  );
+// The app's own Dropdown (D229) behind the old <select> props: onChange
+// still receives { target: { value } }, so forms built on set('field')
+// work unchanged.
+export function Select({ onChange, ...props }) {
+  return <Dropdown {...props} onChange={(value) => onChange({ target: { value } })} />;
 }
 
 /**
@@ -141,10 +161,11 @@ export function Segmented({ value, onChange, options, size = 'md', tone = 'neutr
   // Never wider than its container: on a phone a long tab bar scrolls sideways
   // inside itself instead of pushing the whole page wider than the screen.
   return (
-    <div className={`inline-flex max-w-full overflow-x-auto rounded-lg border border-rule bg-band ${outerPad}`}>
+    <div className={`segmented inline-flex max-w-full overflow-x-auto rounded-lg border border-rule bg-band ${outerPad}`}>
       {options.map((option) => (
         <button
           key={option.value}
+          aria-pressed={value === option.value}
           onClick={() => onChange(option.value)}
           className={`shrink-0 whitespace-nowrap rounded-md border font-medium transition-colors ${btnPad} ${
             value === option.value
@@ -172,7 +193,7 @@ export function Button({ variant = 'primary', size = 'md', children, ...props })
 
   return (
     <button
-      className={`rounded-md font-medium transition-colors disabled:cursor-not-allowed ${padding} ${styles}`}
+      className={`btn btn-${variant} rounded-md font-medium transition-colors disabled:cursor-not-allowed ${padding} ${styles}`}
       {...props}
     >
       {children}
@@ -190,7 +211,7 @@ export function Button({ variant = 'primary', size = 'md', children, ...props })
  */
 export function PageTitle({ as: Tag = 'h2', className, emoji, tint, children }) {
   const { design } = useDesign();
-  if (design !== 'vivid' || !emoji) return <Tag className={className}>{children}</Tag>;
+  if (design !== 'vivid' || !emoji) return <Tag className={`page-title ${className ?? ''}`}>{children}</Tag>;
   return (
     <Tag className="flex items-center gap-3 text-2xl font-medium tracking-tight text-ink">
       <span className={`flex size-10 shrink-0 items-center justify-center rounded-xl text-xl leading-none ${tint}`} aria-hidden="true">

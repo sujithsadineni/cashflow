@@ -29,7 +29,7 @@ export const accountCreateSchema = z.object({
 
   issuer: z.string().trim().max(60).optional().or(z.literal('')),
 
-  account_type: z.enum(['CREDIT_CARD', 'CHECKING', 'SAVINGS']),
+  account_type: z.enum(['CREDIT_CARD', 'CHECKING', 'SAVINGS', 'INVESTMENT']),
 
   // Last four digits only. We never accept a full card number, so
   // the regex enforces exactly four digits rather than "up to 16".
@@ -54,7 +54,7 @@ export const importCreateSchema = z.object({
   // 'local' means parse deterministically, no Anthropic API call —
   // see parse/pdf-local.js. CSV rows still get the cheap Haiku
   // enrichment pass either way; 'local' only changes PDF handling.
-  parse_method: z.enum(['api', 'local']).optional().default('api'),
+  parse_method: z.enum(['api', 'local']).optional().default('local'), // free unless asked (D182)
 });
 
 /**
@@ -70,7 +70,7 @@ export const accountConfirmSchema = z
         person_id: z.coerce.number().int().positive(),
         name: z.string().trim().min(1, 'Name is required').max(60),
         issuer: z.string().trim().max(60).optional().or(z.literal('')),
-        account_type: z.enum(['CREDIT_CARD', 'CHECKING', 'SAVINGS']),
+        account_type: z.enum(['CREDIT_CARD', 'CHECKING', 'SAVINGS', 'INVESTMENT']),
         mask: z.string().trim().regex(/^\d{4}$/, 'Enter the last 4 digits').optional().or(z.literal('')),
       })
       .optional(),
@@ -79,7 +79,7 @@ export const accountConfirmSchema = z
     message: 'Provide account_id or create, not both',
   });
 
-const TXN_TYPE_VALUES = [
+export const TXN_TYPE_VALUES = [
   'purchase',
   'refund',
   'payment',
@@ -161,68 +161,37 @@ export const loanUpdateSchema = z
   .refine((body) => Object.keys(body).length > 0, { message: 'Nothing to update' });
 
 const CADENCE_VALUES = ['WEEKLY', 'BIWEEKLY', 'MONTHLY', 'QUARTERLY', 'ANNUAL'];
-const CONFIDENCE_VALUES = ['HIGH', 'MEDIUM', 'LOW'];
-const RECURRING_STATUS_VALUES = ['ACTIVE', 'PAUSED', 'ENDED'];
 
 /** Creating a recurring series, from a detected candidate or by hand. */
-export const recurringCreateSchema = z.object({
-  name: z.string().trim().min(1, 'Name is required').max(80),
-  glyph: z.string().trim().min(1, 'Pick a glyph').max(8),
-  category_id: z.coerce.number().int().positive().nullable().optional(),
-  account_id: z.coerce.number().int().positive().nullable().optional(),
-  person_id: z.coerce.number().int().positive().nullable().optional(),
-
-  match_name_contains: z.string().trim().min(1, 'A match rule is required').max(80),
+/** Confirming a suggested bill, or adding one by hand (D185). */
+export const billCreateSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  merchant: z.string().trim().min(1).max(80),
+  cadence: z.enum(CADENCE_VALUES),
+  day: z.coerce.number().int().min(1).max(31).nullable().optional(),
+  expected_amount_cents: z.coerce.number().int().max(-1, 'A bill is money out'),
+  amount_varies: z.boolean().default(false),
   match_amount_min_cents: z.coerce.number().int().nullable().optional(),
   match_amount_max_cents: z.coerce.number().int().nullable().optional(),
-  match_days_of_month: z.array(z.coerce.number().int().min(1).max(31)).nullable().optional(),
+  charge_ids: z.array(z.coerce.number().int().positive()).max(500).default([]),
+}).strict();
 
-  cadence: z.enum(CADENCE_VALUES),
-  cadence_interval: z.coerce.number().int().positive().default(1),
-  expected_amount_cents: z.coerce.number().int(),
-  amount_varies: z.boolean().default(false),
-
-  status: z.enum(RECURRING_STATUS_VALUES).default('ACTIVE'),
-  // A starting estimate — get overwritten once real transactions are
-  // linked below, same as first_seen_date/last_seen_date/occurrence_count,
-  // which aren't accepted here at all: they're always derived from the
-  // transactions actually matched at creation time, never client-supplied.
-  next_expected_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD').nullable().optional(),
-  confidence: z.enum(CONFIDENCE_VALUES),
-  created_from: z.enum(['DETECTED', 'MANUAL']),
-});
-
-/** Editing a series: filters, schedule, category, or status. DELETE isn't a route - use status: 'ENDED'. */
-export const recurringUpdateSchema = z
+/** Editing a bill: its name, price, rhythm, day, or status. */
+export const billUpdateSchema = z
   .object({
     name: z.string().trim().min(1).max(80).optional(),
-    glyph: z.string().trim().min(1).max(8).optional(),
-    category_id: z.coerce.number().int().positive().nullable().optional(),
-    account_id: z.coerce.number().int().positive().nullable().optional(),
-    person_id: z.coerce.number().int().positive().nullable().optional(),
-
-    match_name_contains: z.string().trim().min(1).max(80).optional(),
-    match_amount_min_cents: z.coerce.number().int().nullable().optional(),
-    match_amount_max_cents: z.coerce.number().int().nullable().optional(),
-    match_days_of_month: z.array(z.coerce.number().int().min(1).max(31)).nullable().optional(),
-
     cadence: z.enum(CADENCE_VALUES).optional(),
-    cadence_interval: z.coerce.number().int().positive().optional(),
-    expected_amount_cents: z.coerce.number().int().optional(),
+    day: z.coerce.number().int().min(1).max(31).nullable().optional(),
+    expected_amount_cents: z.coerce.number().int().max(-1).optional(),
     amount_varies: z.boolean().optional(),
-
-    status: z.enum(RECURRING_STATUS_VALUES).optional(),
+    status: z.enum(['ACTIVE', 'PAUSED', 'ENDED']).optional(),
   })
+  .strict()
   .refine((body) => Object.keys(body).length > 0, { message: 'Nothing to update' });
 
-/** Manually linking or unlinking one transaction to a series. */
-export const recurringLinkSchema = z.object({
-  transaction_id: z.coerce.number().int().positive(),
-});
-
-export const recurringDismissSchema = z.object({
-  match_name_contains: z.string().trim().min(1).max(80),
-});
+/** Ignoring a suggestion (its merchant|cadence|price key), or unlinking one charge. */
+export const billIgnoreSchema = z.object({ key: z.string().trim().min(1).max(200) }).strict();
+export const billUnlinkSchema = z.object({ transaction_id: z.coerce.number().int().positive() }).strict();
 
 /** Reviewing one Zelle transaction: assign a display name and the type that decides its accounting effect. */
 export const zelleReviewSchema = z.object({
@@ -265,6 +234,11 @@ export const personUpdateSchema = z.object({
   name: z.string().trim().min(1, 'Name is required').max(80),
 });
 
+/** A person's nickname (D237): shown where space is tight. Blank clears it. */
+export const personNicknameSchema = z.object({
+  nickname: z.string().trim().max(40).nullable().transform((v) => (v ? v : null)),
+});
+
 /** A person's chosen avatar (D144) — an emoji, or null to go back to initials. */
 export const personAvatarSchema = z.object({
   avatar: z.string().trim().min(1).max(16).nullable(),
@@ -296,10 +270,18 @@ export const transactionUpdateSchema = z
 const optionalFilter = (schema) => z.preprocess((v) => (v === '' ? undefined : v), schema.optional());
 
 /** Transaction list filters. Everything optional; strings coerced. */
+/** GET /transactions/category-summary (D198): one card, optionally one date range. */
+export const categorySummaryQuerySchema = z.object({
+  account_id: z.coerce.number().int().positive(),
+  from: optionalFilter(z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD')),
+  to: optionalFilter(z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD')),
+});
+
 export const transactionsQuerySchema = z.object({
   account_id: optionalFilter(z.coerce.number().int().positive()),
   person_id: optionalFilter(z.coerce.number().int().positive()),
-  category_id: optionalFilter(z.coerce.number().int().positive()),
+  // 'none' = uncategorised rows, for the Cards page's category bar (D198).
+  category_id: optionalFilter(z.union([z.literal('none'), z.coerce.number().int().positive()])),
   from: optionalFilter(z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD')),
   to: optionalFilter(z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD')),
   txn_type: optionalFilter(z.enum(TXN_TYPE_VALUES)),
@@ -313,6 +295,27 @@ export const transactionsQuerySchema = z.object({
  * replaces it with the cleaned result, or returns 400 with the
  * specific field that failed.
  */
+/** Approving a re-check finding (D175): optionally with a different value than the one suggested. */
+export const transactionReviewApproveSchema = z.object({ value: z.string().trim().min(1).max(100).optional() }).strict();
+
+/** Many Review findings at once (D249): approve some (each with an optional other value), dismiss others. */
+const reviewIdSchema = z.number().int().positive();
+export const transactionReviewBatchSchema = z.object({
+  approve: z.array(z.object({ id: reviewIdSchema, value: z.string().trim().min(1).max(100).optional() }).strict()).max(500).default([]),
+  dismiss: z.array(reviewIdSchema).max(500).default([]),
+}).strict().refine((b) => b.approve.length + b.dismiss.length > 0, { message: 'Nothing to do' });
+
+/** Putting findings back (D249): each with the value it was approved as, so a later edit is never overwritten. */
+export const transactionReviewUndoSchema = z.object({
+  items: z.array(z.object({ id: reviewIdSchema, value: z.string().trim().min(1).max(100).optional() }).strict()).min(1).max(500),
+}).strict();
+
+/** A hand-entered balance for a savings or investment account (D180). */
+export const accountBalanceSchema = z.object({
+  as_of: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD'),
+  balance_cents: z.number().int().min(-2e9).max(2e9),
+}).strict();
+
 export function validate(schema) {
   return (req, res, next) => {
     const result = schema.safeParse(req.body);
@@ -350,3 +353,9 @@ export function validateQuery(schema) {
     next();
   };
 }
+
+/** Marking where a card payment came from by hand (D200). */
+export const paymentSourceSchema = z.object({
+  via: z.enum(['person', 'cash', 'outside']),
+  label: z.string().trim().max(80).optional(),
+}).strict().refine((v) => v.via === 'cash' || (v.label && v.label.length > 0), { message: 'Say who or which account', path: ['label'] });

@@ -1,17 +1,26 @@
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useState } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../api';
-import { usePrivacy } from '../privacy-context';
-import { useDesign } from '../design-context';
-import { DESIGNS } from '../designs';
+import { usePrivacy } from '../use-privacy';
+import { useDesign } from '../use-design';
+import { APPEARANCES, DESIGNS } from '../designs';
 import { avatarColorFor } from '../merchant-logos';
-import { CategoryGlyph, ICON_CATALOG, defaultIconFor } from '../category-icons';
-import { OVERVIEW_CARDS, OVERVIEW_CARDS_SETTING_KEY } from '../overview-cards';
+import { CategoryGlyph } from '../category-icons';
+import { ICON_CATALOG, defaultIconFor } from '../category-icon-keys';
+import { OVERVIEW_CARDS } from '../overview-cards';
+import { useOverviewCards } from '../use-overview-cards';
 import { Accounts } from './Accounts';
 import { Loans } from './Loans';
 import { MerchantIcons } from './MerchantIcons';
 import { People } from './settings/People';
+import { Backups } from './settings/Backups';
 import { Button, TextInput, Segmented, PageTitle, SectionHeader } from './Form';
-import { useNotify } from '../notification-context';
+import { useNotify } from '../use-notify';
+import { GlassSettings } from './settings/GlassSettings';
+import { GlassOverviewCards, GlassDesignPicker, GlassPrivacy } from './settings/GlassPanes';
+import { GroupSection, Group, Row } from './settings/glass-ui';
+import { useWide, halves } from '../use-wide';
 
 /**
  * Turns real names into Jane/John Doe and real dollar figures into
@@ -46,7 +55,7 @@ function ToggleSwitch({ on, onToggle, label }) {
 
 /** Settings → Design: pick Classic or Vivid. A real radio group, so it's keyboard-reachable like any other choice. */
 function DesignPicker() {
-  const { design, setDesign } = useDesign();
+  const { design, setDesign, appearance, setAppearance } = useDesign();
 
   return (
     <section>
@@ -54,6 +63,11 @@ function DesignPicker() {
       <p className="mb-4 max-w-md text-sm text-muted">
         How the app looks on this browser. Your choice is remembered here only, so each person can pick their own.
       </p>
+      {/* Light or dark on top of any design (D234); Auto follows the computer. */}
+      <div className="mb-5 flex flex-wrap items-center gap-3">
+        <span className="text-sm text-ink">Appearance</span>
+        <Segmented value={appearance} onChange={setAppearance} options={APPEARANCES} />
+      </div>
       <div role="radiogroup" aria-label="Design" className="grid max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2">
         {DESIGNS.map((d) => {
           const selected = design === d.value;
@@ -146,19 +160,7 @@ function PrivacyToggle() {
  */
 function OverviewCardsToggle() {
   const vivid = useDesign().design === 'vivid';
-  const [visible, setVisible] = useState(null); // null = still loading
-
-  useEffect(() => {
-    api.appSetting.get(OVERVIEW_CARDS_SETTING_KEY).then((r) => {
-      setVisible(r.value ?? OVERVIEW_CARDS.map((c) => c.key));
-    });
-  }, []);
-
-  function toggle(key) {
-    const next = visible.includes(key) ? visible.filter((k) => k !== key) : [...visible, key];
-    setVisible(next); // optimistic — this is a preference, not money; no need to wait on the round trip
-    api.appSetting.set(OVERVIEW_CARDS_SETTING_KEY, next);
-  }
+  const { visible, toggle } = useOverviewCards();
 
   return (
     <section>
@@ -257,7 +259,8 @@ function IconPicker({ category, onPick }) {
  */
 function Categories({ categories, onChange }) {
   const notify = useNotify();
-  const vivid = useDesign().design === 'vivid';
+  const { design } = useDesign();
+  const vivid = design === 'vivid';
   const maxCount = Math.max(1, ...categories.map((c) => Number(c.transaction_count ?? 0)));
   const [name, setName] = useState('');
   const [error, setError] = useState(null);
@@ -300,6 +303,16 @@ function Categories({ categories, onChange }) {
       setError(err.message);
     }
   };
+
+  if (design === 'glass') {
+    return (
+      <GlassCategories
+        categories={categories}
+        name={name} setName={setName} add={add} busy={busy} error={error}
+        remove={remove} pickIcon={pickIcon} pickerFor={pickerFor} setPickerFor={setPickerFor}
+      />
+    );
+  }
 
   return (
     <section>
@@ -372,6 +385,114 @@ function Categories({ categories, onChange }) {
 }
 
 /**
+ * Glass (D244): one grouped list. Adding is the list's first row, the way
+ * Reminders adds a list; each icon tile opens its picker right under the row,
+ * growing open on a no-bounce spring. An unused category shows "Delete"
+ * outright: an action that only appears on hover can't be found by touch or
+ * by anyone who doesn't already know it's there.
+ */
+function GlassCategories({ categories, name, setName, add, busy, error, remove, pickIcon, pickerFor, setPickerFor }) {
+  const reduceMotion = useReducedMotion();
+  // Wide screens: two lists side by side, the add row heading the first (D245).
+  const columns = useWide() ? halves(categories) : [categories];
+  return (
+    <GroupSection
+      label={`${categories.length} categories`}
+      footnote="Tap an icon to change it. A category in use can't be deleted, because that would quietly uncategorise its history."
+    >
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2 xl:items-start">
+      {columns.map((column, col) => (
+      <Group key={col} inset={58}>
+        {col === 0 && <li className="gs-row flex min-h-11 items-center gap-3 px-4 py-2">
+          <span className="flex size-[30px] shrink-0 items-center justify-center rounded-[8px] bg-info text-white" aria-hidden="true">
+            <svg width="14" height="14" viewBox="0 0 14 14"><path d="M7 2v10M2 7h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+          </span>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && add()}
+            placeholder="New category"
+            aria-label="New category name"
+            className="min-w-0 flex-1 bg-transparent text-[15px] text-ink outline-none placeholder:text-faint"
+          />
+          {name.trim() && (
+            <button type="button" onClick={add} disabled={busy} className="text-[15px] font-semibold text-info disabled:opacity-40">
+              Add
+            </button>
+          )}
+        </li>}
+        {column.map((category) => {
+          const count = Number(category.transaction_count ?? 0);
+          const isOpen = pickerFor === category.id;
+          const current = category.icon_key || defaultIconFor(category.name);
+          const color = avatarColorFor(category.name);
+          return (
+            <Row
+              key={category.id}
+              leading={
+                <button
+                  type="button"
+                  onClick={() => setPickerFor(isOpen ? null : category.id)}
+                  aria-expanded={isOpen}
+                  aria-label={`Change ${category.name}'s icon`}
+                  className="flex size-[30px] items-center justify-center rounded-[8px] text-white"
+                  style={{ backgroundColor: color }}
+                >
+                  <CategoryGlyph iconKey={current} size={16} />
+                </button>
+              }
+              title={category.name}
+              trailing={count === 0 ? (
+                <>
+                  <span className="text-[15px] text-faint">Unused</span>
+                  <button type="button" onClick={() => remove(category)} className="text-[15px] text-spend">Delete</button>
+                </>
+              ) : (
+                <span className="text-[15px] text-muted tnum">{count}</span>
+              )}
+            >
+              <AnimatePresence initial={false}>
+                {isOpen && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={reduceMotion ? { duration: 0 } : { type: 'spring', bounce: 0, duration: 0.35 }}
+                    className="overflow-hidden"
+                  >
+                    <div role="radiogroup" aria-label={`${category.name} icon`} className="flex flex-wrap gap-1.5 px-4 pt-1 pb-3 pl-[58px]">
+                      {ICON_CATALOG.map((key) => (
+                        <button
+                          key={key}
+                          type="button"
+                          role="radio"
+                          aria-checked={key === current}
+                          title={key}
+                          onClick={() => pickIcon(category, key)}
+                          className={`flex size-8 items-center justify-center rounded-[8px] text-white ${
+                            key === current ? 'shadow-[0_0_0_2px_var(--g-solid),0_0_0_4px_var(--color-info)]' : ''
+                          }`}
+                          style={{ backgroundColor: color }}
+                        >
+                          <CategoryGlyph iconKey={key} size={16} />
+                        </button>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </Row>
+          );
+        })}
+      </Group>
+      ))}
+      </div>
+      {error && <p className="mt-1.5 px-4 text-[13px] text-spend">{error}</p>}
+    </GroupSection>
+  );
+}
+
+/**
  * One person's button in the centered row below — a colored initial
  * (the same `avatarColorFor`/`initialsFor` every merchant avatar
  * already uses) plus their name and account count. Click opens the
@@ -383,10 +504,11 @@ const TABS = [
   { value: 'loans', label: 'Loans' },
   { value: 'people', label: 'People' },
   { value: 'categories', label: 'Categories' },
-  { value: 'icons', label: 'Merchant icons' },
+  { value: 'icons', label: 'Merchants' },
   { value: 'overview', label: 'Overview cards' },
   { value: 'design', label: 'Design' },
   { value: 'privacy', label: 'Privacy' },
+  { value: 'backups', label: 'Backups' },
 ];
 
 /**
@@ -398,7 +520,31 @@ const TABS = [
  * of them are on screen together changed.
  */
 export function Settings({ accounts, people, categories, onChange }) {
-  const [tab, setTab] = useState('accounts');
+  // The tab lives in the URL (?tab=loans), so a toast's "Open Loans" can land on it (D201).
+  const [params, setParams] = useSearchParams();
+  const tab = TABS.some((t) => t.value === params.get('tab')) ? params.get('tab') : 'accounts';
+  const setTab = (value) => setParams({ tab: value }, { replace: true });
+  const glass = useDesign().design === 'glass';
+
+  if (glass) {
+    // People's pane line is the household itself, as Glass People had it (D243).
+    const description = tab === 'people'
+      ? `Your household · ${people.length} ${people.length === 1 ? 'person' : 'people'} · ${accounts.length} accounts, one shared ledger`
+      : undefined;
+    return (
+      <GlassSettings tabs={TABS} tab={tab} setTab={setTab} description={description}>
+        {tab === 'accounts' && <Accounts accounts={accounts} people={people} onChange={onChange} />}
+        {tab === 'loans' && <Loans accounts={accounts} onChange={onChange} />}
+        {tab === 'people' && <People people={people} accounts={accounts} onChange={onChange} />}
+        {tab === 'categories' && <Categories categories={categories} onChange={onChange} />}
+        {tab === 'icons' && <MerchantIcons />}
+        {tab === 'overview' && <GlassOverviewCards />}
+        {tab === 'design' && <GlassDesignPicker />}
+        {tab === 'privacy' && <GlassPrivacy />}
+        {tab === 'backups' && <Backups />}
+      </GlassSettings>
+    );
+  }
 
   return (
     <div>
@@ -419,6 +565,7 @@ export function Settings({ accounts, people, categories, onChange }) {
       {tab === 'overview' && <OverviewCardsToggle />}
       {tab === 'design' && <DesignPicker />}
       {tab === 'privacy' && <PrivacyToggle />}
+      {tab === 'backups' && <Backups />}
     </div>
   );
 }

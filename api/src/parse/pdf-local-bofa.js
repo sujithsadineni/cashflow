@@ -31,7 +31,7 @@
  * rule the CSV parser already follows (D12).
  */
 
-import { parseMoney, extractAmountAfterLabel, classifyCheckingInflow, classifyCheckingOutflow, mergeContinuation } from './pdf-local-helpers.js';
+import { MONEY_SOURCE, parseMoney, extractAmountAfterLabel, classifyCheckingInflow, classifyCheckingOutflow, mergeContinuation } from './pdf-local-helpers.js';
 
 /**
  * The money amount tied to a given label, searched one joined line at
@@ -45,7 +45,7 @@ import { parseMoney, extractAmountAfterLabel, classifyCheckingInflow, classifyCh
  * against real statement text, see BUILD-LOG.
  */
 function extractLabeledAmount(text, label) {
-  const money = '(-?\\s*\\$?\\s*(?:\\d{1,3}(?:,\\d{3})*)?\\.\\d{2})';
+  const money = `(${MONEY_SOURCE})`;
   const labelFirstRe = new RegExp(`${label}[ \\t]+${money}`, 'i');
   const moneyFirstRe = new RegExp(`${money}[ \\t]*${label}`, 'i');
   for (const line of text.split('\n')) {
@@ -112,15 +112,14 @@ function resolveYear(month, periodStart, periodEnd) {
 const SECTION_HEADERS = [
   [/^Payments and Other Credits$/i, 'payments'],
   [/^Purchases and Adjustments$/i, 'purchases'],
-  // A rare promotional feature (confirmed against one real statement,
-  // not every card has it): BofA deposits cash straight to a linked
-  // bank account, billed to the card like a cash advance. It prints
-  // positive same as a purchase, but it isn't spend — the household
-  // received real cash, not goods — so unlike every other section in
-  // this file it's exempt from the uniform sign inversion below, and
-  // gets 'transfer' rather than 'purchase' (matches how this exact
-  // transaction was already classified before this section existed).
-  [/^Direct Deposit and Check Cash Advances$/i, 'direct_deposit'],
+  // A promotional cash advance (confirmed against real statements, not
+  // every card has it): BofA deposits cash straight to a linked bank
+  // account, billed to the card. Like a balance transfer it's new debt
+  // on the card, so it's inverted like every other section (negative),
+  // but typed 'transfer', not 'purchase': the household received cash,
+  // it didn't buy anything (D191, replacing D68's positive sign).
+  [/^Direct Deposit and Check Cash Advances$/i, 'transfer_draw'],
+  [/^Balance Transfers$/i, 'transfer_draw'],
   [/^Fees Charged$/i, 'fees'],
   [/^Fees$/i, 'fees'],
   [/^Interest Charged$/i, 'interest'],
@@ -163,9 +162,14 @@ const SKIP_LINE_PATTERNS = [
 ];
 
 const GENERIC_PAYMENT_PATTERNS = [/ELECTRONIC PAYMENT/i, /^PAYMENT FROM /i, /MOBILE PAYMENT/i, /ONLINE PAYMENT/i];
+// Cash paid in at a BofA ATM or branch: never a refund (D207). The
+// household pays in cash it received, so it counts as income, the same as
+// an ATM cash deposit into checking (D218).
+const CASH_PAYMENT = /\b(ATM|BRANCH|CASH) PAYMENT\b/i;
 const CASHBACK_PATTERNS = [/CASHBACK/i, /CASH REWARDS STATEMENT CREDIT/i];
 
 function classifyPaymentLine(description) {
+  if (CASH_PAYMENT.test(description)) return { txn_type: 'deposit', category: 'Cash Deposit', merchant: null };
   if (GENERIC_PAYMENT_PATTERNS.some((p) => p.test(description))) {
     return { txn_type: 'payment', category: 'Card Payment', merchant: null };
   }
@@ -216,7 +220,7 @@ function parseTransactionLines(text, { periodStart, periodEnd, issuer, cleanMerc
     }
     if (section === null) continue; // page header / account-identity banner line
 
-    if (section === 'payments' || section === 'purchases' || section === 'direct_deposit') {
+    if (section === 'payments' || section === 'purchases' || section === 'transfer_draw') {
       const m = line.match(TXN_LINE_FULL);
       if (!m) {
         if (lastRow) {
@@ -231,18 +235,16 @@ function parseTransactionLines(text, { periodStart, periodEnd, issuer, cleanMerc
       const pad = (n) => String(n).padStart(2, '0');
       const posted_date = `${year}-${pad(mm)}-${pad(dd)}`;
       const printedCents = parseMoney(amountStr);
-      // Direct Deposit is the one section NOT inverted — see its own
-      // comment on SECTION_HEADERS above.
-      const amount_cents = section === 'direct_deposit' ? printedCents : -printedCents;
+      const amount_cents = -printedCents;
 
-      if (section === 'direct_deposit') {
+      if (section === 'transfer_draw') {
         rows.push({
           posted_date,
           description,
           merchant: cleanMerchantName(description),
           amount_cents,
           txn_type: 'transfer',
-          suggested_category: null,
+          suggested_category: 'Balance Transfer',
           confidence: 'HIGH',
           raw_text: line,
         });
@@ -293,7 +295,10 @@ function parseTransactionLines(text, { periodStart, periodEnd, issuer, cleanMerc
         merchant: issuer,
         amount_cents,
         txn_type: section === 'interest' ? 'interest' : 'fee',
-        suggested_category: section === 'interest' ? 'Interest' : null,
+        suggested_category:
+          section === 'interest' ? 'Interest'
+            : /BALANCE TRANSFER|CASH ADVANCE|DIRECT DEPOSIT/i.test(description) ? 'Balance Transfer'
+              : null,
         confidence: 'HIGH',
         raw_text: line,
       });

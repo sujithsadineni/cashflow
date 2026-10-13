@@ -1,6 +1,6 @@
 /**
  * Finds transactions whose merchant is missing or looks like a
- * variant of an existing one — "COSTCO WHSE #0187 770-622-1330 GA"
+ * variant of an existing one — "COSTCO WHSE #0101 770-555-0101 GA"
  * when "Costco" is already a real merchant elsewhere, "AMAZON" when
  * "Amazon" is the household's usual casing. A high-confidence match
  * is applied directly; anything less certain lands in `merchant_review`

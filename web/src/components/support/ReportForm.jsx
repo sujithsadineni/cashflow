@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { usePrivacy } from '../../privacy-context';
+import { usePrivacy } from '../../use-privacy';
 import { issueUrl } from '../../support-links';
 import { DetailDialog } from '../ui/DetailDialog';
 import { Button, Field, TextArea, TextInput } from '../Form';

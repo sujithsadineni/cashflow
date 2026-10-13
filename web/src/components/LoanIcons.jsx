@@ -70,15 +70,9 @@ const ICONS = {
   other: OtherLoanIcon,
 };
 
-export function loanTypeIcon(type) {
+/** The icon for a loan type, as a component (D222: it was a function returning JSX). */
+export function LoanTypeIcon({ type }) {
   const Icon = ICONS[type] ?? OtherLoanIcon;
   return <Icon />;
 }
 
-export const LOAN_TYPE_LABEL = {
-  car: 'Car',
-  home: 'Home',
-  credit_card: 'Credit card',
-  balance_transfer: 'Balance transfer',
-  other: 'Other',
-};

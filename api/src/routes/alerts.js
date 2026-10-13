@@ -25,8 +25,8 @@
 import { Router } from 'express';
 import { query } from '../db.js';
 import { logger } from '../logger.js';
-import { projectOccurrences, isLapsed, addCadence } from '../recurring.js';
-import { getRecurringCandidates } from './recurring.js';
+import { step, suggestionKey } from '../bills.js';
+import { getBills, getSuggestions } from './recurring.js';
 
 export const alertsRouter = Router();
 
@@ -69,7 +69,7 @@ async function findOverdueStatements(today) {
   const overdue = [];
   for (const row of rows) {
     if (!row.last_period_end) continue;
-    const expectedNext = addCadence(row.last_period_end, 'MONTHLY', 1);
+    const expectedNext = step(row.last_period_end, 'MONTHLY');
     const deadline = isoDate(new Date(new Date(`${expectedNext}T00:00:00`).getTime() + STATEMENT_GRACE_DAYS * 86_400_000));
     if (today > deadline) {
       overdue.push({
@@ -85,47 +85,14 @@ async function findOverdueStatements(today) {
 }
 
 /**
- * Active, still-relevant (not lapsed — see isLapsed's own docs)
- * series whose only occurrence expected so far THIS calendar month
- * has no real transaction linked to it. Deliberately a coarser check
- * than the Recurring calendar's day-by-day MISSED chips
- * (routes/calendar.js): "did anything from this series land this
- * month at all" is the right grain for a once-a-session notice, and
- * skips building a full month grid this endpoint doesn't need.
+ * Bills that are late (D185): past their date by more than the cadence's
+ * grace, with no charge seen. The same rule the Recurring page shows.
  */
-async function findMissedThisMonth(today) {
-  const monthStart = `${today.slice(0, 7)}-01`;
-  const monthEnd = isoDate(new Date(new Date(`${monthStart}T00:00:00`).getFullYear(), new Date(`${monthStart}T00:00:00`).getMonth() + 1, 0));
-
-  const { rows: series } = await query(`SELECT * FROM recurring_series WHERE status = 'ACTIVE'`);
-  const relevant = series.filter((s) => !isLapsed(s.next_expected_date, s.cadence, s.cadence_interval));
-  if (relevant.length === 0) return [];
-
-  const { rows: linked } = await query(
-    `SELECT DISTINCT recurring_series_id FROM transaction
-      WHERE recurring_series_id IS NOT NULL AND posted_date >= $1 AND posted_date <= $2`,
-    [monthStart, monthEnd]
-  );
-  const coveredIds = new Set(linked.map((r) => r.recurring_series_id));
-
-  const missed = [];
-  for (const s of relevant) {
-    if (coveredIds.has(s.id)) continue;
-    // Strictly before today, not on-or-before — something due TODAY
-    // hasn't necessarily posted yet (statements process overnight),
-    // and the Recurring calendar's own MISSED chips (routes/
-    // calendar.js) already draw this same line at today, not before.
-    const dueDatesSoFar = projectOccurrences(s, monthStart, today).filter((d) => d < today);
-    if (dueDatesSoFar.length === 0) continue; // not overdue yet this month
-    missed.push({
-      id: s.id,
-      name: s.name,
-      glyph: s.glyph,
-      expected_amount_cents: s.expected_amount_cents,
-      expected_date: dueDatesSoFar[0],
-    });
-  }
-  return missed;
+async function findLateBills() {
+  const bills = await getBills();
+  return bills
+    .filter((b) => b.state === 'late')
+    .map((b) => ({ id: b.id, name: b.name, glyph: b.glyph, expected_amount_cents: b.expected_amount_cents, expected_date: b.next_date }));
 }
 
 /**
@@ -207,8 +174,10 @@ async function computeLive() {
   const today = isoDate(new Date());
   const [statements, missed, candidates, pending] = await Promise.all([
     findOverdueStatements(today),
-    findMissedThisMonth(today),
-    getRecurringCandidates(),
+    findLateBills(),
+    getSuggestions().then((list) =>
+      list.map((s) => ({ suggested_name: s.name, match_name_contains: suggestionKey(s), cadence: s.cadence, expected_amount_cents: s.expected_amount_cents }))
+    ),
     findPendingReview(),
   ]);
   return { statements, missed, candidates, pending };
@@ -229,6 +198,32 @@ async function persistCurrentMonth({ statements, missed, candidates, pending }) 
   }
 }
 
+/**
+ * Card payments with no known source (D199/D200), and pending Review
+ * fixes that change totals, summed by which total they move.
+ */
+const TOTALS_KINDS = ['zelle_card_payment', 'card_deposit', 'card_now_tracked', 'type_reward', 'daily_cash', 'abroad', 'income_internal'];
+async function paymentAndReviewNudges() {
+  const { rows: payments } = await query(
+    `SELECT t.id, a.name AS account_name, to_char(t.posted_date, 'YYYY-MM-DD') AS posted_date, t.amount_cents
+       FROM payment_match m JOIN transaction t ON t.id = m.card_transaction_id JOIN account a ON a.id = t.account_id
+      WHERE m.status = 'unverified'
+      ORDER BY t.posted_date DESC, t.id DESC`
+  );
+  const { rows: review } = await query(
+    `SELECT r.check_kind, COUNT(*)::int AS count, COALESCE(SUM(abs(t.amount_cents)), 0)::bigint AS cents,
+            array_agg(r.id ORDER BY r.id) AS ids
+       FROM transaction_review r JOIN transaction t ON t.id = r.transaction_id
+      WHERE r.status = 'pending' AND r.check_kind = ANY($1)
+      GROUP BY r.check_kind`,
+    [TOTALS_KINDS]
+  );
+  return {
+    payments_unknown: payments,
+    review_changes: review.map((r) => ({ ...r, cents: Number(r.cents) })),
+  };
+}
+
 alertsRouter.get('/', async (req, res, next) => {
   try {
     const live = await computeLive();
@@ -247,6 +242,10 @@ alertsRouter.get('/', async (req, res, next) => {
         expected_amount_cents: c.expected_amount_cents,
       })),
       pending_review: live.pending,
+      // D201: what the payment matcher and Review found, for their toasts.
+      // Not persisted to alert history: both have their own page that is
+      // the record (Review), so this is only a nudge.
+      ...(await paymentAndReviewNudges()),
     });
   } catch (err) {
     next(err);

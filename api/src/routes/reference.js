@@ -7,14 +7,14 @@
 import { Router } from 'express';
 import { query } from '../db.js';
 import { audit } from '../audit.js';
-import { validate, categoryCreateSchema, categoryIconSchema, personUpdateSchema, personAvatarSchema } from '../validate.js';
+import { validate, categoryCreateSchema, categoryIconSchema, personUpdateSchema, personAvatarSchema, personNicknameSchema } from '../validate.js';
 import { changesBetween } from '../changes.js';
 
 export const referenceRouter = Router();
 
 referenceRouter.get('/people', async (req, res, next) => {
   try {
-    const { rows } = await query('SELECT id, name, avatar FROM person ORDER BY id');
+    const { rows } = await query('SELECT id, name, nickname, avatar FROM person ORDER BY id');
     res.json(rows);
   } catch (err) {
     next(err);
@@ -82,6 +82,31 @@ referenceRouter.patch('/people/:id/avatar', validate(personAvatarSchema), async 
       entityType: 'person',
       entityId: id,
       detail: { changes: changesBetween(before[0], rows[0], ['avatar']) },
+    });
+
+    res.json(rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** Set (or clear) a person's nickname — Settings → People (D237). */
+referenceRouter.patch('/people/:id/nickname', validate(personNicknameSchema), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const { rows: before } = await query('SELECT nickname FROM person WHERE id = $1', [id]);
+    if (before.length === 0) return res.status(404).json({ error: 'Person not found' });
+
+    const { rows } = await query('UPDATE person SET nickname = $1 WHERE id = $2 RETURNING id, name, nickname, avatar', [
+      req.body.nickname,
+      id,
+    ]);
+
+    await audit({
+      action: 'person.nickname_set',
+      entityType: 'person',
+      entityId: id,
+      detail: { changes: changesBetween(before[0], rows[0], ['nickname']) },
     });
 
     res.json(rows[0]);

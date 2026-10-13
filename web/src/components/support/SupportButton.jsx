@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { useDesign } from '../../design-context';
+import { useDesign } from '../../use-design';
 import { ReportForm } from './ReportForm';
 import { SupportPanel } from './SupportPanel';
 

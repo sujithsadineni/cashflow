@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useApi } from '../use-api';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { MonthStatusGrid } from './MonthStatusGrid';
@@ -20,22 +21,14 @@ import { MonthStatusGrid } from './MonthStatusGrid';
  * calendar months (e.g. Mar 21 - Apr 21).
  */
 export function StatementCalendar({ accountId, onMonthClick }) {
-  const [months, setMonths] = useState(null); // null while loading
-  const [error, setError] = useState(null);
-  const [yearIdx, setYearIdx] = useState(0);
+  const req = useApi(`statement-months:${accountId}`, () => api.accounts.statementMonths(accountId), { tags: ['imports'] });
+  const months = req.loading ? null : req.data?.months ?? null; // null while loading
+  const error = req.error;
+  // The year being looked at belongs to the card; another card starts on its latest (D211).
+  const [yearPick, setYearPick] = useState({ accountId: null, idx: 0 });
+  const yearIdx = yearPick.accountId === accountId ? yearPick.idx : 0;
+  const setYearIdx = (fn) => setYearPick({ accountId, idx: fn(yearIdx) });
   const navigate = useNavigate();
-
-  useEffect(() => {
-    let cancelled = false;
-    setMonths(null);
-    setError(null);
-    setYearIdx(0);
-    api.accounts
-      .statementMonths(accountId)
-      .then((data) => { if (!cancelled) setMonths(data.months); })
-      .catch((err) => { if (!cancelled) setError(err.message); });
-    return () => { cancelled = true; };
-  }, [accountId]);
 
   if (error) return <p className="text-sm text-spend">{error}</p>;
   if (months === null) return null;

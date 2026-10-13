@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { lookupMerchantDomain } from '../merchant-logos';
+import { lookupMerchantDomain, avatarColorFor, initialsFor } from '../merchant-logos';
 
 /**
  * A recurring series' icon: a real merchant logo (same lookup
@@ -23,6 +23,18 @@ export function RecurringIcon({ name, glyph, size = 24, className = '' }) {
         className={`shrink-0 rounded-md object-cover ${className}`}
         onError={() => setFailed(true)}
       />
+    );
+  }
+
+  // No logo and no glyph (bills from D185 on have none): initials, like any other merchant.
+  if (!glyph) {
+    return (
+      <span
+        style={{ width: size, height: size, fontSize: Math.round(size * 0.4), backgroundColor: avatarColorFor(name ?? '') }}
+        className={`flex shrink-0 items-center justify-center rounded-md font-medium text-white ${className}`}
+      >
+        {initialsFor(name ?? '')}
+      </span>
     );
   }
 

@@ -1,4 +1,5 @@
 import { formatMoney, formatShortDate } from '../api';
+import { zelleName } from '../txn-name';
 import { MiniTrend } from './MiniTrend';
 import { DetailDialog, ShowMore, BarRow } from './ui/DetailDialog';
 
@@ -96,7 +97,7 @@ export function SecondaryDetail({
               render={(tx) => (
                 <div key={tx.id} className="flex items-baseline justify-between gap-3 py-2 text-sm">
                   <div className="min-w-0">
-                    <span className="text-ink">{tx.description || tx.merchant || 'Uncategorized'}</span>
+                    <span className="text-ink">{zelleName(tx) ?? (tx.description || tx.merchant || 'Uncategorized')}</span>
                     <span className="ml-2 text-faint">{formatShortDate(tx.posted_date)}</span>
                     <div className="truncate text-xs text-faint">{tx.account_name}</div>
                   </div>

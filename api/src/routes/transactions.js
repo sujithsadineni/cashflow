@@ -14,8 +14,11 @@ import {
   validate,
   validateQuery,
   transactionsQuerySchema,
+  categorySummaryQuerySchema,
   transactionUpdateSchema,
 } from '../validate.js';
+import { spendSql, incomeSql } from '../spend.js';
+import { learnPlaces, placeFor } from '../place.js';
 
 export const transactionsRouter = Router();
 
@@ -36,7 +39,8 @@ transactionsRouter.get('/', validateQuery(transactionsQuerySchema), async (req, 
 
     if (account_id !== undefined) add('t.account_id = ?', account_id);
     if (person_id !== undefined) add('a.person_id = ?', person_id);
-    if (category_id !== undefined) add('t.category_id = ?', category_id);
+    if (category_id === 'none') where.push('t.category_id IS NULL');
+    else if (category_id !== undefined) add('t.category_id = ?', category_id);
     if (from !== undefined) add('t.posted_date >= ?', from);
     if (to !== undefined) add('t.posted_date <= ?', to);
     if (txn_type !== undefined) add('t.txn_type = ?', txn_type);
@@ -55,10 +59,26 @@ transactionsRouter.get('/', validateQuery(transactionsQuerySchema), async (req, 
     const whereSql = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
 
     const countResult = await query(
-      `SELECT COUNT(*) AS total
+      `SELECT COUNT(*) AS total,
+              COALESCE(SUM(t.amount_cents) FILTER (WHERE t.amount_cents < 0), 0)::bigint AS out_cents,
+              COALESCE(SUM(t.amount_cents) FILTER (WHERE t.amount_cents > 0), 0)::bigint AS in_cents
          FROM transaction t
          JOIN account a ON a.id = t.account_id
         ${whereSql}`,
+      values
+    );
+    // What each month of the matching rows adds up to (D251), over every
+    // matching row, not just this page: a month split across pages still
+    // shows its whole total. Money out and money in, everything included
+    // (transfers and card payments too): the sum of what's listed, not spending.
+    const { rows: monthRows } = await query(
+      `SELECT to_char(t.posted_date, 'YYYY-MM') AS month, COUNT(*)::int AS count,
+              COALESCE(SUM(t.amount_cents) FILTER (WHERE t.amount_cents < 0), 0)::bigint AS out_cents,
+              COALESCE(SUM(t.amount_cents) FILTER (WHERE t.amount_cents > 0), 0)::bigint AS in_cents
+         FROM transaction t
+         JOIN account a ON a.id = t.account_id
+        ${whereSql}
+        GROUP BY 1`,
       values
     );
 
@@ -66,21 +86,71 @@ transactionsRouter.get('/', validateQuery(transactionsQuerySchema), async (req, 
       `SELECT t.id, t.posted_date, t.description, t.merchant, t.amount_cents, t.txn_type, t.notes,
               t.category_id, c.name AS category_name, c.icon_key AS category_icon_key,
               t.account_id, a.name AS account_name, a.mask AS account_mask,
-              p.id AS person_id, p.name AS person_name,
-              t.contact_id, ct.name AS contact_name, ct.nickname AS contact_nickname, ct.image_path AS contact_image_path
+              p.id AS person_id, p.name AS person_name, p.nickname AS person_nickname,
+              t.contact_id, ct.name AS contact_name, ct.nickname AS contact_nickname, ct.image_path AS contact_image_path,
+              -- Where a card payment came from (D199): the bank row it matched, or
+              -- why not and which bank it likely sits on. 'accounts_at_bank' lets
+              -- the label add ···mask only when the bank has more than one account.
+              CASE WHEN pm.id IS NULL THEN NULL ELSE json_build_object(
+                'status', pm.status, 'reason', pm.reason, 'source', pm.source, 'via', pm.via,
+                'person', pm.detail->>'person', 'location', pm.detail->>'location', 'label', pm.detail->>'label',
+                'named_issuer', pm.detail->>'named_issuer', 'split', (pm.detail->>'split')::boolean,
+                'part_count', (SELECT COUNT(*)::int FROM payment_match_part x WHERE x.match_id = pm.id),
+                'bank', CASE WHEN ba.id IS NULL THEN NULL ELSE json_build_object(
+                  'account_id', ba.id, 'account_name', ba.name, 'account_type', ba.account_type, 'issuer', ba.issuer, 'mask', ba.mask,
+                  'posted_date', to_char(bt.posted_date, 'YYYY-MM-DD'), 'description', bt.description,
+                  'accounts_at_bank', (SELECT COUNT(*)::int FROM account x WHERE x.issuer = ba.issuer AND x.account_type <> 'CREDIT_CARD'))
+                END,
+                'likely', CASE WHEN la.id IS NULL THEN NULL ELSE json_build_object(
+                  'account_id', la.id, 'account_name', la.name, 'account_type', la.account_type, 'issuer', la.issuer, 'mask', la.mask,
+                  'accounts_at_bank', (SELECT COUNT(*)::int FROM account x WHERE x.issuer = la.issuer AND x.account_type <> 'CREDIT_CARD'))
+                END,
+                'covered_from', pm.detail->>'covered_from',
+                'covered_until', pm.detail->>'covered_until',
+                'window', pm.detail->'window',
+                'candidate_count', jsonb_array_length(COALESCE(pm.detail->'candidate_ids', '[]'::jsonb)))
+              END AS payment_source,
+              -- The other side: a bank row that verified a card payment (D199).
+              CASE WHEN bm.id IS NULL THEN NULL ELSE json_build_object(
+                'status', bm.status, 'via', bm.via, 'person', bm.detail->>'person',
+                'part_count', (SELECT COUNT(*)::int FROM payment_match_part x WHERE x.match_id = bm.id),
+                'card', json_build_object(
+                  'account_id', ca.id, 'account_name', ca.name, 'issuer', ca.issuer, 'mask', ca.mask,
+                  'posted_date', to_char(ctx.posted_date, 'YYYY-MM-DD'), 'description', ctx.description,
+                  'accounts_with_name', (SELECT COUNT(*)::int FROM account x WHERE x.name = ca.name)))
+              END AS payment_target
          FROM transaction t
          JOIN account a ON a.id = t.account_id
          JOIN person p ON p.id = a.person_id
          LEFT JOIN category c ON c.id = t.category_id
          LEFT JOIN contact ct ON ct.id = t.contact_id
+         LEFT JOIN payment_match pm ON pm.card_transaction_id = t.id
+         LEFT JOIN transaction bt ON bt.id = pm.bank_transaction_id
+         LEFT JOIN account ba ON ba.id = bt.account_id
+         LEFT JOIN account la ON la.id = (pm.detail->>'likely_account_id')::int
+         LEFT JOIN payment_match_part bp ON bp.transaction_id = t.id
+         LEFT JOIN payment_match bm ON bm.id = bp.match_id
+         LEFT JOIN transaction ctx ON ctx.id = bm.card_transaction_id
+         LEFT JOIN account ca ON ca.id = ctx.account_id
         ${whereSql}
         ORDER BY t.posted_date DESC, t.id DESC
         LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
       [...values, limit, offset]
     );
 
+    // Where each purchase happened (D224): read from its description, with
+    // store numbers and cut-short towns learned from every purchase on file.
+    const { rows: history } = await query(`SELECT merchant, description FROM transaction WHERE txn_type IN ('purchase', 'refund')`);
+    const learned = learnPlaces(history);
+    for (const r of rows) {
+      r.place = r.txn_type === 'purchase' || r.txn_type === 'refund' ? placeFor(r, learned) : null;
+    }
+
     res.json({
       total: Number(countResult.rows[0].total),
+      out_cents: Number(countResult.rows[0].out_cents),
+      in_cents: Number(countResult.rows[0].in_cents),
+      months: Object.fromEntries(monthRows.map((m) => [m.month, { count: m.count, out_cents: Number(m.out_cents), in_cents: Number(m.in_cents) }])),
       limit,
       offset,
       rows,
@@ -153,6 +223,43 @@ transactionsRouter.patch('/:id', validate(transactionUpdateSchema), async (req, 
    instead of disappearing.
    ------------------------------------------------------------------ */
 
+/**
+ * Per-category counts and totals for one card (D198): the buttons above
+ * the Cards page's table, and the totals box beside them. The table is
+ * paged, so the browser can't add these up itself. Money in and out are
+ * kept apart (a Zelle category has both); uncategorised rows come back
+ * as category_id null. Biggest first, by money moved either way.
+ */
+transactionsRouter.get('/category-summary', validateQuery(categorySummaryQuerySchema), async (req, res, next) => {
+  try {
+    const { account_id, from, to } = req.filters;
+    const values = [account_id];
+    const where = ['t.account_id = $1'];
+    if (from !== undefined) { values.push(from); where.push(`t.posted_date >= $${values.length}`); }
+    if (to !== undefined) { values.push(to); where.push(`t.posted_date <= $${values.length}`); }
+    const { rows } = await query(
+      `SELECT t.category_id, c.name AS category_name, c.icon_key AS category_icon_key,
+              COUNT(*)::int AS count,
+              COALESCE(SUM(t.amount_cents) FILTER (WHERE t.amount_cents > 0), 0)::bigint AS in_cents,
+              COALESCE(-SUM(t.amount_cents) FILTER (WHERE t.amount_cents < 0), 0)::bigint AS out_cents
+         FROM transaction t
+         LEFT JOIN category c ON c.id = t.category_id
+        WHERE ${where.join(' AND ')}
+        GROUP BY t.category_id, c.name, c.icon_key
+        ORDER BY SUM(abs(t.amount_cents)) DESC, c.name`,
+      values
+    );
+    const categories = rows.map((r) => ({ ...r, in_cents: Number(r.in_cents), out_cents: Number(r.out_cents) }));
+    const total = categories.reduce(
+      (t, c) => ({ count: t.count + c.count, in_cents: t.in_cents + c.in_cents, out_cents: t.out_cents + c.out_cents }),
+      { count: 0, in_cents: 0, out_cents: 0 }
+    );
+    res.json({ total, categories });
+  } catch (err) {
+    next(err);
+  }
+});
+
 transactionsRouter.get('/trends', async (req, res, next) => {
   try {
     const granularity = req.query.granularity ?? 'month';
@@ -191,8 +298,10 @@ transactionsRouter.get('/trends', async (req, res, next) => {
 
     const { rows } = await query(
       `SELECT to_char(b.bucket, 'YYYY-MM-DD') AS bucket_start,
-              COALESCE(SUM(t.amount_cents) FILTER (WHERE t.amount_cents < 0 AND COALESCE(t.txn_type,'') NOT IN ('payment','transfer','savings')), 0) AS spend_cents,
-              COALESCE(SUM(t.amount_cents) FILTER (WHERE t.amount_cents > 0 AND COALESCE(t.txn_type,'') NOT IN ('payment','transfer')), 0) AS income_cents
+              -- Same rules as the Overview's Spent and Income cards (spend.js), so the
+              -- bars match the cards and the Saved/Kept row beneath them (D168).
+              COALESCE(LEAST(SUM(t.amount_cents) FILTER (WHERE ${spendSql('t')}), 0), 0) AS spend_cents,
+              COALESCE(SUM(t.amount_cents) FILTER (WHERE ${incomeSql('t')}), 0) AS income_cents
          FROM ${series} AS b(bucket)
          LEFT JOIN transaction t
            ON date_trunc('${granularity}', t.posted_date) = b.bucket
@@ -270,11 +379,17 @@ transactionsRouter.get('/merchant-summary', async (req, res, next) => {
           LIMIT 24`,
         filterParams
       ),
+      // Each row carries its own category name and icon. The Recent cards
+      // used to look them up in by_category, but that list is emptied for
+      // a single-category merchant (no chips needed), so every card fell
+      // back to "Uncategorized" — a paycheck's 16 Salary rows, for one.
       query(
-        `SELECT id, posted_date, description, amount_cents, category_id
-           FROM transaction
-          WHERE lower(merchant) = lower($1) ${categoryFilter}
-          ORDER BY posted_date DESC
+        `SELECT t.id, t.posted_date, t.description, t.amount_cents, t.category_id,
+                c.name AS category_name, c.icon_key AS category_icon_key
+           FROM transaction t
+           LEFT JOIN category c ON c.id = t.category_id
+          WHERE lower(t.merchant) = lower($1) ${categoryFilter}
+          ORDER BY t.posted_date DESC
           LIMIT 8`,
         filterParams
       ),

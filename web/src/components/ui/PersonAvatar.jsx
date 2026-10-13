@@ -1,5 +1,5 @@
 import { motion } from 'motion/react';
-import { useDesign } from '../../design-context';
+import { useDesign } from '../../use-design';
 import { avatarColorFor, initialsFor } from '../../merchant-logos';
 import { FAMILY_AVATARS } from '../../avatars';
 
@@ -10,7 +10,7 @@ import { FAMILY_AVATARS } from '../../avatars';
  */
 export function PersonAvatar({ person, size = 40 }) {
   const { design } = useDesign();
-  if (design === 'vivid' && person.avatar) {
+  if ((design === 'vivid' || design === 'glass') && person.avatar) {
     return (
       <span
         className="flex shrink-0 items-center justify-center rounded-full bg-band ring-2 ring-offset-2 ring-offset-raised"

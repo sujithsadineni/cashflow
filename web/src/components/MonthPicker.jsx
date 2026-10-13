@@ -1,4 +1,4 @@
-import { useDesign } from '../design-context';
+import { useDesign } from '../use-design';
 /**
  * An always-visible year stepper + 12 month buttons — replaces the
  * old click-to-open dropdown panel (a button that read like a date,

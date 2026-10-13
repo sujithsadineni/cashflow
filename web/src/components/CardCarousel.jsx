@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
+import { useApi } from '../use-api';
 import { api, formatMoney, maskName } from '../api';
 import { bankBrandFor } from '../bankBrands';
 import { MerchantAvatar } from './MerchantAvatar';
 import bofaLogo from '../assets/bank-logos/bofa.png';
 import chaseLogo from '../assets/bank-logos/chase.png';
 import sofiLogo from '../assets/bank-logos/sofi.png';
+import { useNotify } from '../use-notify';
 
 /**
  * A single card, centered, medium size — click the arrows to step
@@ -235,18 +237,10 @@ function FlipHint() {
  * never render a back face at all, so they never fire this request.
  */
 function CardBack({ account }) {
-  const [summary, setSummary] = useState(null);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setSummary(null);
-    setError(null);
-    api.accounts.summary(account.id)
-      .then((d) => { if (!cancelled) setSummary(d); })
-      .catch((err) => { if (!cancelled) setError(err.message); });
-    return () => { cancelled = true; };
-  }, [account.id]);
+  const req = useApi(`account-summary:${account.id}`, () => api.accounts.summary(account.id), { tags: ['transactions'] });
+  // Nothing from the previous card while this one's loads (D211).
+  const summary = req.loading ? null : req.data ?? null;
+  const error = req.error;
 
   const credit = isCard(account);
   const brand = !credit && !account.color ? bankBrandFor(account.issuer) : null;
@@ -355,7 +349,9 @@ export function CardCarousel({ accounts, selectedId, onSelect, onChanged }) {
   const [customizing, setCustomizing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const [flipped, setFlipped] = useState(false);
+  // Which card is turned over, by id: moving to another card shows its
+  // front without an effect having to flip it back (D211).
+  const [flippedId, setFlippedId] = useState(null);
   const fileRef = useRef(null);
 
   const index = Math.max(0, accounts.findIndex((a) => a.id === selectedId));
@@ -364,13 +360,16 @@ export function CardCarousel({ accounts, selectedId, onSelect, onChanged }) {
   // Always land back on the front when the centered card changes —
   // otherwise stepping from a flipped card to the next one would show
   // that next card's back with no flip of your own to explain it.
-  useEffect(() => setFlipped(false), [selected?.id]);
+  const flipped = flippedId != null && flippedId === selected?.id;
 
   const step = (delta) => {
     const next = accounts[index + delta];
     if (next) onSelect(next.id);
   };
 
+  const notify = useNotify();
+  // A colour swatch shows on the card the moment it's picked, and gets tried
+  // several times in a row, so only the photo changes confirm with a toast (D232).
   const pickColor = async (hex) => {
     if (!selected) return;
     setError(null);
@@ -390,6 +389,7 @@ export function CardCarousel({ accounts, selectedId, onSelect, onChanged }) {
     try {
       await api.accounts.uploadImage(selected.id, file);
       onChanged();
+      notify(`Photo set on ${selected.name}`, { type: 'success' });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -404,6 +404,7 @@ export function CardCarousel({ accounts, selectedId, onSelect, onChanged }) {
     try {
       await api.accounts.removeImage(selected.id);
       onChanged();
+      notify(`Photo removed from ${selected.name}`, { type: 'success' });
     } catch (err) {
       setError(err.message);
     }
@@ -437,7 +438,7 @@ export function CardCarousel({ accounts, selectedId, onSelect, onChanged }) {
                           ${diff !== 0 ? 'cursor-pointer' : ''} ${OFFSET_STYLE[diff]}`}
             >
               {diff === 0 ? (
-                <FlippableCard account={account} flipped={flipped} onToggle={() => setFlipped((f) => !f)} />
+                <FlippableCard account={account} flipped={flipped} onToggle={() => setFlippedId(flipped ? null : selected?.id)} />
               ) : (
                 <CardFace account={account} />
               )}

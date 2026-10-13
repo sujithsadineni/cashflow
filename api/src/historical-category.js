@@ -117,3 +117,57 @@ export async function suggestHistoricalCategories(rows, client) {
 
   return suggestions;
 }
+
+/**
+ * Learned types (D175): a freshly-parsed row takes the type the
+ * household's own history clearly gives the same merchant (or, with no
+ * merchant, the same printed line) in the same direction: 3+ past rows,
+ * 80% agreeing. This is how a correction made in Review, or anywhere
+ * else, carries into every later import. Unlike categories it may
+ * override the parser, because a parser's type is a rule of thumb and
+ * the history is the household's own answer. Zelle is left alone: its
+ * type comes from the Zelle review on approval.
+ *
+ * Returns a Map from the row's array index to the learned type.
+ */
+export async function suggestHistoricalTypes(rows, client) {
+  const keyOf = (merchant, norm) => (merchant ? `m:${merchant}` : `d:${norm}`);
+  const candidates = rows
+    .map((r, index) => ({ ...r, index, norm: normalizeDescription(r.description) }))
+    .filter((r) => r.amount_cents != null && !/zelle/i.test(r.description ?? ''));
+  const merchants = [...new Set(candidates.filter((r) => r.merchant).map((r) => r.merchant))];
+  const norms = [...new Set(candidates.filter((r) => !r.merchant).map((r) => r.norm))];
+  if (merchants.length === 0 && norms.length === 0) return new Map();
+
+  const { rows: history } = await client.query(
+    `SELECT merchant, lower(regexp_replace(description, '[^a-zA-Z0-9]+', ' ', 'g')) AS norm,
+            amount_cents < 0 AS out, txn_type, COUNT(*)::int AS count
+       FROM transaction
+      WHERE txn_type IS NOT NULL
+        AND (merchant = ANY($1)
+             OR trim(lower(regexp_replace(description, '[^a-zA-Z0-9]+', ' ', 'g'))) = ANY($2))
+      GROUP BY 1, 2, 3, 4`,
+    [merchants, norms]
+  );
+  const counts = new Map(); // key|out -> Map(type -> count)
+  // A past row counts under its merchant AND its printed line, so a new
+  // row the parser left unnamed still learns from rows named since.
+  const bump = (k, type, n) => {
+    if (!counts.has(k)) counts.set(k, new Map());
+    counts.get(k).set(type, (counts.get(k).get(type) ?? 0) + n);
+  };
+  for (const h of history) {
+    if (h.merchant) bump(`m:${h.merchant}|${h.out}`, h.txn_type, h.count);
+    bump(`d:${h.norm.trim()}|${h.out}`, h.txn_type, h.count);
+  }
+
+  const learned = new Map();
+  for (const r of candidates) {
+    const c = counts.get(`${keyOf(r.merchant, r.norm)}|${r.amount_cents < 0}`);
+    if (!c) continue;
+    const total = [...c.values()].reduce((a, b) => a + b, 0);
+    const [type, n] = [...c.entries()].sort((a, b) => b[1] - a[1])[0];
+    if (total >= 3 && n / total >= 0.8 && type !== r.txn_type) learned.set(r.index, type);
+  }
+  return learned;
+}

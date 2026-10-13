@@ -34,6 +34,7 @@ import { extractPdfPages } from './pdf-pages.js';
 import { classifyPages } from './classify.js';
 import { renderPageToPng } from './render-page.js';
 import { redactPan } from './redact.js';
+import { extractPromos } from './promos.js';
 import { guessIssuerFromPageOne, lookupLayoutHint, checkAndUpdateLayout } from './layout-cache.js';
 
 export const TXN_TYPES = [
@@ -78,7 +79,7 @@ Precision rules:
 - Sign convention: money leaving the account is NEGATIVE, money arriving is POSITIVE.
   On a checking account: purchases, withdrawals and transfers out are negative; deposits and refunds are positive.
   On a credit card: purchases, fees and interest are negative; payments received, refunds and statement credits are positive — even if the statement prints purchases as positive numbers, you must normalize to this convention.
-  A balance transfer, cash advance, or "Direct Deposit"/"Check" cash-advance draw is POSITIVE too, not negative — it increases what's owed on the card, but real cash is arriving for the cardholder (or debt is moving onto this card), the opposite of a purchase. Sign by what happens to the PERSON's money, never by whether the card's own balance went up or down — a purchase and a cash-advance draw both increase the balance owed, but only one of them is money the person actually spent.
+  A balance transfer, cash advance, or "Direct Deposit"/"Check" cash-advance draw is NEGATIVE on the card, like a purchase: it is new debt on this card, and the money went to the cardholder's bank account or to pay another card. Give it txn_type "transfer" (it is not spending) and category "Balance Transfer"; its transaction fee is a "fee", category "Balance Transfer". The statement's opening balance minus every row must equal its closing balance.
 - Dates are YYYY-MM-DD. Statements often print MM/DD only — take the year from the statement period, and be careful when a period spans a year boundary (a December date belongs to the earlier year).
 - Extract every transaction line exactly once. Do not invent rows. Do not include running balances, section subtotals, or "Total" lines as transactions.
 - Pages are separated by a "--- Page N ---" marker. Some statements repeat a page's content across a text version and, rarely, both a text and image version — do not double-count a transaction that appears more than once because of that.
@@ -278,6 +279,8 @@ export async function extractStatementFromPdf(buffer, categoryNames, password) {
       total_payments_cents: extracted.total_payments_cents,
       cashback_earned_cents: extracted.cashback_earned_cents,
       cashback_balance_cents: extracted.cashback_balance_cents,
+      // Read locally from every page: the APR table is on a page Claude never sees (D192).
+      promos: extractPromos(pages),
     },
     rows: extracted.transactions.map((t) => ({
       posted_date: t.posted_date,

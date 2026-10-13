@@ -1,13 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useApi } from '../use-api';
 import { api, formatMoney } from '../api';
-import { Button } from './Form';
-import { LoanForm, EMPTY_LOAN } from './Loans';
-import { loanTypeIcon } from './LoanIcons';
+import { LoanForm } from './Loans';
+import { EMPTY_LOAN } from '../loan-form';
+import { LoanTypeIcon } from './LoanIcons';
 import { motion } from 'motion/react';
 import { LoanProgress, LoanInsights } from './LoanProgress';
 import { percentClearedFor, VIVID_LOAN } from '../loan-progress';
-import { useDesign } from '../design-context';
+import { useDesign } from '../use-design';
 import { LoanScheduleDetail } from './LoanScheduleDetail';
+import { BalanceTransferStatus, BalanceTransferSuggestions } from './BalanceTransferPanel';
+import { withStatementDates } from '../balance-transfer';
+import { useNotify } from '../use-notify';
+import { GlassLoansList, GlassLoanSheet } from './loans/GlassLoans';
 
 const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const monthLabel = (iso) => {
@@ -69,6 +74,7 @@ function VividLoanCard({ loan, index, onOpen }) {
           <div className="min-w-0">
             <div className="truncate font-medium text-ink">{loan.name}</div>
             {loan.lender && <div className="truncate text-xs text-muted">{loan.lender}</div>}
+            {loan.bt && <BalanceTransferStatus bt={loan.bt} className="mt-0.5" />}
           </div>
         </div>
         <div className="shrink-0 text-right">
@@ -94,39 +100,33 @@ function VividLoanCard({ loan, index, onOpen }) {
  * stacked overlay, not nested inside this one.
  */
 export function LoansDetail({ accounts, month, onClose, onChanged }) {
-  const [loans, setLoans] = useState(null);
-  const [error, setError] = useState(null);
+  // Same month the summary card behind this drill-down is already
+  // showing (Overview.jsx) — a loan that hadn't started yet is
+  // left out entirely by the backend, not just shown at $0. (useApi, D211)
+  const req = useApi(`loans:${month ?? 'now'}`, () => api.loans.list(false, month), { tags: ['loans'] });
+  const loans = req.data ? req.data.map(withStatementDates) : null;
+  const error = req.error;
+  const load = req.reload;
   const [adding, setAdding] = useState(false);
   const [selectedLoan, setSelectedLoan] = useState(null);
   const { design } = useDesign();
   const vivid = design === 'vivid';
+  const glass = design === 'glass';
+  const [scheduleLoan, setScheduleLoan] = useState(null); // Glass: the month-by-month view behind a countdown
 
-  const load = async () => {
-    try {
-      // Same month the summary card behind this drill-down is already
-      // showing (Overview.jsx) — a loan that hadn't started yet is
-      // left out entirely by the backend, not just shown at $0.
-      const rows = await api.loans.list(false, month);
-      setLoans(rows);
-      setError(null);
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  useEffect(() => { load(); }, [month]);
-
-  const handleCreated = () => {
+  const notify = useNotify();
+  const handleCreated = (loan) => {
     setAdding(false);
     load();
     onChanged?.();
+    notify(`${loan.name} added`, { type: 'success' });
   };
 
   return (
     <>
-      <div className="fixed inset-0 z-20 flex items-center justify-center bg-ink/30 p-4" onClick={onClose}>
+      <div className="modal-scrim fixed inset-0 z-20 flex items-center justify-center bg-ink/30 p-4" onClick={onClose}>
         <div
-          className={`max-h-[85vh] w-full overflow-y-auto rounded-lg border border-rule bg-raised p-5 shadow-lg ${vivid ? 'max-w-xl' : 'max-w-lg'}`}
+          className={`max-h-[85vh] w-full overflow-y-auto rounded-lg border border-rule bg-raised p-5 shadow-lg ${vivid || glass ? 'max-w-xl' : 'max-w-lg'}`}
           onClick={(e) => e.stopPropagation()}
         >
           <div className="mb-4 flex items-center justify-between">
@@ -148,14 +148,19 @@ export function LoansDetail({ accounts, month, onClose, onChanged }) {
             </p>
           )}
 
+          {/* Only for "right now": a past month's drill-down isn't the place to start tracking something. */}
+          {!month && <BalanceTransferSuggestions onAdded={() => { load(); onChanged?.(); }} />}
+
           {vivid && loans && loans.length > 0 && <VividLoansSummary loans={loans} />}
 
           {loans && (
             <div className="space-y-3">
+              {/* Glass (D240): the countdown, after Live Activities. */}
+              {glass && <GlassLoansList loans={loans} onOpen={setSelectedLoan} />}
               {vivid && loans.map((loan, index) => (
                 <VividLoanCard key={loan.id} loan={loan} index={index} onOpen={() => setSelectedLoan(loan)} />
               ))}
-              {!vivid && loans.map((loan) => (
+              {!vivid && !glass && loans.map((loan) => (
                 <button
                   key={loan.id}
                   onClick={() => setSelectedLoan(loan)}
@@ -164,11 +169,12 @@ export function LoansDetail({ accounts, month, onClose, onChanged }) {
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-2.5">
                       <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-band text-spend">
-                        {loanTypeIcon(loan.loan_type)}
+                        <LoanTypeIcon type={loan.loan_type} />
                       </span>
                       <div className="min-w-0">
                         <div className="truncate text-ink">{loan.name}</div>
                         {loan.lender && <div className="truncate text-xs text-muted">{loan.lender}</div>}
+                        {loan.bt && <BalanceTransferStatus bt={loan.bt} className="mt-0.5" />}
                       </div>
                     </div>
                     <div className="shrink-0 text-right">
@@ -208,9 +214,13 @@ export function LoansDetail({ accounts, month, onClose, onChanged }) {
         </div>
       </div>
 
-      {selectedLoan && (
+      {selectedLoan && !glass && (
         <LoanScheduleDetail loan={selectedLoan} onClose={() => setSelectedLoan(null)} />
       )}
+      {selectedLoan && glass && (
+        <GlassLoanSheet loan={selectedLoan} onClose={() => setSelectedLoan(null)} onSchedule={() => { setScheduleLoan(selectedLoan); setSelectedLoan(null); }} />
+      )}
+      {scheduleLoan && <LoanScheduleDetail loan={scheduleLoan} onClose={() => setScheduleLoan(null)} />}
     </>
   );
 }

@@ -17,7 +17,7 @@ test('a real-looking card number is caught; a known test number and a phone are 
   assert.equal(findLeaks(`Account# ${CARD.match(/.{4}/g).join(' ')}`).length, 1);
   assert.equal(findLeaks('Account# 4111 1111 1111 1111').length, 0);
   assert.equal(findLeaks('Call 1-800-935-9935').length, 0);
-  assert.equal(findLeaks('COSTCO WHSE #0187 770-622-1330 GA').length, 0);
+  assert.equal(findLeaks('COSTCO WHSE #0101 770-555-0101 GA').length, 0);
   assert.equal(findLeaks(`Amex ${AMEX}`).length, 1);
 });
 

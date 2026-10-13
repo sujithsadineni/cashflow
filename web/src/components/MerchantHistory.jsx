@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { api, formatMoney, formatShortDate } from '../api';
 import { MerchantAvatar } from './MerchantAvatar';
 import { MiniTrend } from './MiniTrend';
-import { CategoryGlyph, defaultIconFor } from '../category-icons';
+import { CategoryGlyph } from '../category-icons';
+import { defaultIconFor } from '../category-icon-keys';
 import { avatarColorFor } from '../merchant-logos';
 
 // A small colored badge, one deterministic color per category name —
@@ -146,8 +147,6 @@ export function MerchantHistory({ merchant, onClose }) {
   // used for the trend.
   const trendMonths = data ? [...data.by_month].slice(0, 12).reverse() : [];
 
-  const categoryById = new Map((data?.by_category ?? []).map((c) => [c.category_id, c]));
-
   // Once there's enough history to make one long column feel like
   // scrolling forever, split it into two — the whole point of giving
   // this card more room in the first place. A handful of months stays
@@ -157,7 +156,7 @@ export function MerchantHistory({ merchant, onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-20 flex items-center justify-center bg-ink/30 p-4"
+      className="modal-scrim fixed inset-0 z-20 flex items-center justify-center bg-ink/30 p-4"
       onClick={onClose}
     >
       <div
@@ -267,8 +266,7 @@ export function MerchantHistory({ merchant, onClose }) {
                   same eight transactions fit in three here. */}
               <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
                 {data.recent.map((t, i) => {
-                  const cat = categoryById.get(t.category_id);
-                  const categoryName = cat?.category_name ?? 'Uncategorized';
+                  const categoryName = t.category_name ?? 'Uncategorized';
                   return (
                     <div
                       key={t.id}
@@ -278,7 +276,7 @@ export function MerchantHistory({ merchant, onClose }) {
                       <div className="flex items-center justify-between gap-2">
                         <CategoryBadge
                           name={categoryName}
-                          iconKey={cat?.category_icon_key ?? defaultIconFor(categoryName)}
+                          iconKey={t.category_icon_key ?? defaultIconFor(categoryName)}
                           size={26}
                         />
                         <span className={`font-mono text-sm tnum ${t.amount_cents < 0 ? 'text-spend' : 'text-earn'}`}>

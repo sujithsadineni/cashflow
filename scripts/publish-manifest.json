@@ -5,6 +5,7 @@
     "api/demo/**",
     "api/package.json",
     "api/package-lock.json",
+    "api/scripts/migrate.mjs",
     "db/**",
     "web/**",
     "scripts/leak-scan.mjs",
@@ -23,6 +24,7 @@
   ],
   "exclude": [
     "web/dist/**",
+    "**/household/**",
     "**/node_modules/**"
   ],
   "allow": [

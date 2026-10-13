@@ -1,4 +1,6 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
+import { MerchantIconsContext } from './use-merchant-icons';
+import { useApi } from './use-api';
 import { api } from './api';
 
 /**
@@ -14,19 +16,16 @@ import { api } from './api';
  * internally, so none of its call sites change.
  */
 
-const MerchantIconsContext = createContext({ icons: {}, refresh: () => {} });
 
 export function MerchantIconsProvider({ children }) {
-  const [icons, setIcons] = useState({});
-
-  const refresh = useCallback(async () => {
-    const rows = await api.merchantIcons.list();
+  // useApi (D211): `refresh` reloads after an icon is changed in Settings.
+  const req = useApi('merchant-icons', async () => {
     const byMerchant = {};
-    for (const row of rows) byMerchant[row.merchant] = row;
-    setIcons(byMerchant);
-  }, []);
-
-  useEffect(() => { refresh(); }, [refresh]);
+    for (const row of await api.merchantIcons.list()) byMerchant[row.merchant] = row;
+    return byMerchant;
+  });
+  const icons = useMemo(() => req.data ?? {}, [req.data]);
+  const refresh = req.reload;
 
   const value = useMemo(() => ({ icons, refresh }), [icons, refresh]);
 
@@ -34,11 +33,3 @@ export function MerchantIconsProvider({ children }) {
 }
 
 /** The custom icon row for one merchant, or undefined if it has none. */
-export function useMerchantIcon(merchant) {
-  const { icons } = useContext(MerchantIconsContext);
-  return merchant ? icons[merchant] : undefined;
-}
-
-export function useMerchantIconsRefresh() {
-  return useContext(MerchantIconsContext).refresh;
-}

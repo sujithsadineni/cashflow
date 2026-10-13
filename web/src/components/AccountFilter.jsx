@@ -45,13 +45,20 @@ export function AccountFilter({ accounts, visibleIds, selectedId, onSelect }) {
   if (accounts.length === 0) return null;
   const hasSelection = selectedId !== null;
 
-  let visibleIndex = -1;
+  // Each visible account's position among the visible ones (for the
+  // stagger delay), worked out before rendering rather than counted inside
+  // the render loop (D222).
+  const visiblePosition = new Map();
+  for (const account of accounts) {
+    if (!visibleIds || visibleIds.has(account.id)) visiblePosition.set(account.id, visiblePosition.size);
+  }
 
+  // Full width on a phone, a card's width (24rem) from there up (D232).
   return (
-    <div className="w-96 shrink-0">
+    <div className="w-full max-w-96 shrink-0">
       {accounts.map((account) => {
         const visible = !visibleIds || visibleIds.has(account.id);
-        if (visible) visibleIndex += 1;
+        const visibleIndex = visible ? visiblePosition.get(account.id) : -1;
         const selected = account.id === selectedId;
 
         return (

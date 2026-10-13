@@ -20,6 +20,7 @@ import { query } from '../db.js';
 import { audit } from '../audit.js';
 import { changesBetween } from '../changes.js';
 import { validate, loanCreateSchema, loanUpdateSchema } from '../validate.js';
+import { balanceTransferStatus, balanceTransferSuggestions } from '../balance-transfer.js';
 
 export const loansRouter = Router();
 
@@ -134,6 +135,121 @@ const monthsElapsedSql = (asOf) => `
 export const monthEndCappedSql = (monthParam) =>
   `LEAST((${monthParam}::date + interval '1 month' - interval '1 day')::date, CURRENT_DATE)`;
 
+
+/**
+ * Everything balance-transfer.js reads about some cards, up to `today`
+ * ('YYYY-MM-DD'): their statements (oldest first), promo lines by
+ * statement period, and rows. Shared by the status and the suggestions.
+ */
+async function loadCardFacts(ids, today) {
+  const facts = new Map(ids.map((id) => [id, { statements: [], promos: {}, rows: [] }]));
+  if (ids.length === 0) return facts;
+  const [statements, promos, txns] = await Promise.all([
+    query(
+      `SELECT account_id, to_char(period_start, 'YYYY-MM-DD') AS period_start, to_char(period_end, 'YYYY-MM-DD') AS period_end,
+              closing_balance_cents, total_payments_cents
+         FROM statement WHERE account_id = ANY($1) AND period_end <= $2::date ORDER BY period_end`,
+      [ids, today]
+    ),
+    query(
+      `SELECT s.account_id, to_char(s.period_end, 'YYYY-MM-DD') AS period_end, p.kind, p.label, p.offer_id, p.apr_bps,
+              p.standard_apr_bps, to_char(p.end_date, 'YYYY-MM-DD') AS end_date, p.balance_subject_cents
+         FROM statement_promo p JOIN statement s ON s.id = p.statement_id
+        WHERE s.account_id = ANY($1) AND s.period_end <= $2::date ORDER BY p.id`,
+      [ids, today]
+    ),
+    query(
+      `SELECT t.id, t.account_id, to_char(t.posted_date, 'YYYY-MM-DD') AS posted_date, t.description, t.amount_cents,
+              t.txn_type, c.name AS category_name
+         FROM transaction t LEFT JOIN category c ON c.id = t.category_id
+        WHERE t.account_id = ANY($1) AND t.posted_date <= $2::date`,
+      [ids, today]
+    ),
+  ]);
+  for (const { account_id, ...s } of statements.rows) facts.get(account_id).statements.push(s);
+  for (const { account_id, period_end, ...p } of promos.rows) (facts.get(account_id).promos[period_end] ??= []).push(p);
+  for (const t of txns.rows) facts.get(t.account_id).rows.push(t);
+  return facts;
+}
+
+const isoDate = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : d ?? null);
+
+/**
+ * D193: a balance-transfer loan's status, from its linked card's own
+ * statements, promo lines and rows up to `asOf` (balance-transfer.js).
+ * An unlinked one still gets a status from its hand-entered balance and
+ * deadline. Attached as `bt`; every other loan gets null.
+ */
+export async function attachBalanceTransferStatus(loans, asOf = 'CURRENT_DATE', params = []) {
+  if (!loans.some((l) => l.loan_type === 'balance_transfer')) return loans.map((l) => ({ ...l, bt: null }));
+  const { rows: [{ today }] } = await query(`SELECT to_char(${asOf}, 'YYYY-MM-DD') AS today`, params);
+  const ids = [...new Set(loans.filter((l) => l.loan_type === 'balance_transfer' && l.linked_account_id).map((l) => l.linked_account_id))];
+  const facts = await loadCardFacts(ids, today);
+  return loans.map((l) => {
+    if (l.loan_type !== 'balance_transfer') return { ...l, bt: null };
+    const card = facts.get(l.linked_account_id) ?? { statements: [], promos: {}, rows: [] };
+    return {
+      ...l,
+      bt: balanceTransferStatus({
+        loan: { start_date: isoDate(l.start_date), deadline_date: isoDate(l.deadline_date), effective_balance_cents: l.effective_balance_cents },
+        ...card,
+        today,
+      }),
+    };
+  });
+}
+
+/* ------------------------------------------------------------------
+   Suggestions (D194) — cards carrying a balance transfer with no loan
+   tracking it. Dismissals live in app_setting, keyed per promo, so a
+   later transfer on the same card is suggested afresh.
+   ------------------------------------------------------------------ */
+
+const DISMISSED_KEY = 'dismissed_bt_suggestions';
+
+async function dismissedSuggestions() {
+  const { rows } = await query('SELECT value FROM app_setting WHERE key = $1', [DISMISSED_KEY]);
+  return Array.isArray(rows[0]?.value) ? rows[0].value : [];
+}
+
+loansRouter.get('/suggestions', async (req, res, next) => {
+  try {
+    const { rows: cards } = await query(
+      `SELECT id, name, issuer FROM account WHERE account_type = 'CREDIT_CARD' AND is_active = true ORDER BY id`
+    );
+    const { rows: loans } = await query('SELECT loan_type, linked_account_id, is_active FROM loan');
+    const { rows: [{ today }] } = await query(`SELECT to_char(CURRENT_DATE, 'YYYY-MM-DD') AS today`);
+    const facts = await loadCardFacts(cards.map((c) => c.id), today);
+    res.json(balanceTransferSuggestions({
+      cards: cards.map((c) => ({ ...c, ...facts.get(c.id) })),
+      loans,
+      dismissed: await dismissedSuggestions(),
+      today,
+    }));
+  } catch (err) {
+    next(err);
+  }
+});
+
+loansRouter.post('/suggestions/:key/dismiss', async (req, res, next) => {
+  try {
+    const key = req.params.key;
+    if (!/^\d+:\d{4}-\d{2}-\d{2}$/.test(key)) return res.status(400).json({ error: 'Invalid suggestion key' });
+    const dismissed = await dismissedSuggestions();
+    if (!dismissed.includes(key)) {
+      await query(
+        `INSERT INTO app_setting (key, value, updated_at) VALUES ($1, $2, now())
+         ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = now()`,
+        [DISMISSED_KEY, JSON.stringify([...dismissed, key])]
+      );
+      await audit({ action: 'loan.suggestion_dismissed', entityType: 'account', entityId: Number(key.split(':')[0]), detail: { key } });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 /* ------------------------------------------------------------------
    List
    ------------------------------------------------------------------ */
@@ -178,7 +294,7 @@ loansRouter.get('/', async (req, res, next) => {
       params
     );
 
-    res.json(rows);
+    res.json(await attachBalanceTransferStatus(rows, asOf, params));
   } catch (err) {
     next(err);
   }
@@ -196,9 +312,13 @@ loansRouter.get('/', async (req, res, next) => {
      - linked to a card: the payments the issuer printed on that
        month's statement (statement.total_payments_cents), same
        "read it off the statement" rule as cashback;
-     - otherwise, with a lender: Loan-category payment transactions
-       whose merchant or description contains the lender's name
-       ("WELLS FARGO AUTO DRAFT" for lender "Wells Fargo"). Plain
+     - otherwise, with a lender: money out whose merchant or
+       description contains the lender's name ("WELLS FARGO AUTO
+       DRAFT" for lender "Wells Fargo"), whatever it's categorised —
+       a household may file them as, say, "Consulting Fee" purchases, and
+       requiring the Loan category missed them all (D196). Card bills
+       and moves between your own accounts are left out, so a lender
+       named like a bank can't pick up its card payments. Plain
        substring (strpos), not ILIKE, so a % or _ in a lender's name
        can't widen the match;
      - neither: null — the UI says it can't tell, rather than guessing.
@@ -224,8 +344,10 @@ loansRouter.get('/:id/history', async (req, res, next) => {
       statement: `(SELECT COALESCE(SUM(s.total_payments_cents), 0) FROM statement s
                     WHERE s.account_id = loan.linked_account_id AND date_trunc('month', s.period_end) = m)`,
       lender_match: `(SELECT COALESCE(-SUM(t.amount_cents), 0) FROM transaction t
-                       JOIN category c ON c.id = t.category_id
-                      WHERE c.name = 'Loan' AND t.txn_type = 'payment'
+                       LEFT JOIN category c ON c.id = t.category_id
+                      WHERE t.amount_cents < 0
+                        AND COALESCE(t.txn_type, '') NOT IN ('transfer', 'savings')
+                        AND COALESCE(c.name, '') <> 'Card Payment'
                         AND date_trunc('month', t.posted_date) = m
                         AND (strpos(lower(COALESCE(t.merchant, '')), lower(trim(loan.lender))) > 0
                           OR strpos(lower(t.description), lower(trim(loan.lender))) > 0))`,

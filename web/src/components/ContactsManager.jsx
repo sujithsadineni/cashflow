@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import { MerchantAvatar } from './MerchantAvatar';
+import { useNotify } from '../use-notify';
 
 /**
  * Every contact the app has ever seen a Zelle payment from or to —
@@ -20,6 +21,7 @@ import { MerchantAvatar } from './MerchantAvatar';
  */
 
 function ContactRow({ contact, onChanged }) {
+  const notify = useNotify();
   const [name, setName] = useState(contact.name);
   const [nickname, setNickname] = useState(contact.nickname ?? '');
   const [busy, setBusy] = useState(false);
@@ -37,6 +39,7 @@ function ContactRow({ contact, onChanged }) {
     try {
       await api.contacts.update(contact.id, { [field]: trimmed || null });
       onChanged();
+      notify(`${field === 'name' ? 'Name' : 'Nickname'} saved`, { type: 'success' });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -52,6 +55,7 @@ function ContactRow({ contact, onChanged }) {
     try {
       await api.contacts.uploadImage(contact.id, file);
       onChanged();
+      notify(`${contact.name}'s photo uploaded`, { type: 'success' });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -66,6 +70,7 @@ function ContactRow({ contact, onChanged }) {
     try {
       await api.contacts.removeImage(contact.id);
       onChanged();
+      notify(`${contact.name}'s photo removed`, { type: 'success' });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -123,7 +128,7 @@ export function ContactsManager({ onClose, onChanged }) {
 
   return (
     <div
-      className="fixed inset-0 z-30 flex items-center justify-center bg-ink/30 p-4"
+      className="modal-scrim fixed inset-0 z-30 flex items-center justify-center bg-ink/30 p-4"
       onClick={(e) => { e.stopPropagation(); onClose(); }}
     >
       <div

@@ -32,9 +32,13 @@ month, category, person and account. No bank logins, no aggregators, no cloud.
 
 ## Scope
 
-In: statement upload and parsing, review before save, monthly views by
+In: statement upload and parsing, review before save (and re-checks of
+saved rows, which never edit on their own), monthly views by
 category/person/account, cashback per month, full-history search, manual
-loan tracking, recurring-bill detection, a shared household ledger.
+loan tracking, savings balances entered by hand, recurring-bill detection,
+card payments matched to their bank rows, a shared household ledger.
+Claude reads a statement only when the person asks, one file at a time:
+never add an automatic Claude call.
 
 Out: bill splitting with roommates, card-rewards modelling, "which card
 should I use", bank APIs/Plaid, budgets and forecasting. Ask before adding
@@ -48,20 +52,30 @@ React 19 + Vite + Tailwind v4, no component library · PostgreSQL.
 ```
 api/src/          routes/ (one file per resource), parse/ (CSV + PDF pipeline)
 api/demo/         invented demo household + recorder for the GitHub Pages demo
-db/               numbered SQL migrations, applied in order
+db/               numbered SQL migrations, applied by `npm run migrate` (api/);
+                  never edit one that's applied: add a new file
 web/src/          components/, api.js (every fetch), index.css (design tokens)
 scripts/          leak-scan (pre-commit), publish manifest
 guide/            architecture and design notes
 ```
 
+`household/` folders under `api/src` and `web/src` are optional and private:
+one household's own merchant logos and store places. They're never part of the
+public repo; the code runs the same without them.
+
 ## Design system
 
-Two designs, picked in Settings → Design. **Classic** is quiet: greenbar
-ledger colours, `spend` (oxblood) and `earn` (pine) as the only saturated
-colours, no emoji. **Vivid** is the colourful one: `--color-vivid-*` tokens,
-emoji and `motion` animation. Keep Vivid-only work behind `useDesign()` so it
-never leaks into Classic. Use token classes (`text-ink`, `bg-band`), never raw
-hex. Every number in a column gets `.tnum`.
+Three designs, picked in Settings → Design, each in light or dark (the
+sidebar toggle). **Classic** is quiet: greenbar ledger colours, `spend`
+(oxblood) and `earn` (pine) as the only saturated colours, no emoji. **Vivid**
+is the colourful one: `--color-vivid-*` tokens, emoji and `motion` animation.
+**Glass** is Apple-style: a CSS layer on `:root[data-design="glass"]` that
+repoints the shared tokens; glass only on what floats (sidebar, toolbars,
+popovers, toasts), content stays solid, with Reduce Transparency, Increase
+Contrast and Reduce Motion fallbacks. Keep design-only work behind
+`useDesign()` so it never leaks into Classic. Use token classes (`text-ink`,
+`bg-band`), never raw hex, so dark mode keeps working. Every number in a
+column gets `.tnum`.
 
 ## Working here
 

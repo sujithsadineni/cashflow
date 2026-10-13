@@ -102,27 +102,32 @@ for (const [y, m] of MONTHS) {
   spend(A.amex, 9, 'SPOTIFY USA', 'Spotify', 1199, 'Subscriptions');
   spend(A.bofaCard, 11, 'DISNEY PLUS', 'Disney+', 999, 'Subscriptions');
   spend(A.freedom, 3, 'APPLE.COM/BILL', 'Apple', 299, 'Subscriptions');
-  spend(A.bofaCard, 2, 'PLANET FITNESS', 'Planet Fitness', 2499, 'Health');
+  spend(A.bofaCard, 2, 'PLANET FITNESS AUSTIN TX', 'Planet Fitness', 2499, 'Health');
 
   // Everyday spending.
-  for (const d of [3, 10, 17, 24]) spend(pick([A.amex, A.bofaCard]), d, "TRADER JOE'S #123", "Trader Joe's", between(4500, 11800), 'Groceries');
-  for (const d of [6, 20]) spend(A.amex, d, 'COSTCO WHSE #0123', 'Costco', between(11000, 26000), 'Costco');
+  for (const d of [3, 10, 17, 24]) spend(pick([A.amex, A.bofaCard]), d, "TRADER JOE'S #123 AUSTIN TX", "Trader Joe's", between(4500, 11800), 'Groceries');
+  // Two warehouses; every third month the Austin one prints only its phone
+  // number, and the app learns its town from the other visits (D226, D257).
+  for (const d of [6, 20]) {
+    const line = d === 20 ? 'COSTCO WHSE #1104 GEORGETOWN TX' : m % 3 === 0 ? 'COSTCO WHSE #0681 512-555-0142 TX' : 'COSTCO WHSE #0681 AUSTIN TX';
+    spend(A.amex, d, line, 'Costco', between(11000, 26000), 'Costco');
+  }
   for (let i = 0; i < 9; i++) {
     const [desc, merchant, lo, hi] = pick([
-      ['CHIPOTLE 1234', 'Chipotle', 1100, 2800], ['STARBUCKS STORE 55', 'Starbucks', 450, 1400],
-      ['SPICE CORNER', 'Spice Corner', 2400, 6800], ['DOORDASH*ORDER', 'DoorDash', 1800, 5200], ['PANERA BREAD', 'Panera Bread', 1200, 3100],
+      ['CHIPOTLE 1234 AUSTIN TX', 'Chipotle', 1100, 2800], ['STARBUCKS STORE 55 AUSTIN TX', 'Starbucks', 450, 1400],
+      ['SPICE CORNER GEORGETOWN TX', 'Spice Corner', 2400, 6800], ['DOORDASH*ORDER', 'DoorDash', 1800, 5200], ['PANERA BREAD #601 AUSTIN TX', 'Panera Bread', 1200, 3100],
     ]);
     spend(pick([A.freedom, A.bofaCard, A.amex]), between(1, 28), desc, merchant, between(lo, hi), 'Dining');
   }
   for (let i = 0; i < 5; i++) spend(pick([A.freedom, A.amex]), between(1, 28), 'AMAZON.COM*ORDER', 'Amazon', between(1200, 14800), 'Shopping');
-  spend(A.bofaCard, between(1, 28), 'TARGET T-1234', 'Target', between(2500, 9800), 'Shopping');
-  for (let i = 0; i < 3; i++) spend(A.freedom, between(1, 28), 'TESLA SUPERCHARGER', 'Tesla Supercharger', between(1200, 3100), 'EV Charging');
-  spend(A.bofaCard, between(1, 28), 'SHELL OIL 57444', 'Shell', between(3400, 5600), 'Fuel');
+  spend(A.bofaCard, between(1, 28), 'TARGET T-1234 CEDAR PARK TX', 'Target', between(2500, 9800), 'Shopping');
+  for (let i = 0; i < 3; i++) spend(A.freedom, between(1, 28), 'TESLA SUPERCHARGER AUSTIN TX', 'Tesla Supercharger', between(1200, 3100), 'EV Charging');
+  spend(A.bofaCard, between(1, 28), 'SHELL OIL 57444 PFLUGERVILLE TX', 'Shell', between(3400, 5600), 'Fuel');
   spend(A.freedom, between(1, 28), 'UBER *TRIP', 'Uber', between(1400, 3900), 'Transport');
   if (m % 2 === 0) spend(A.bofaCard, between(1, 28), 'CINEMARK 800-2463627', 'Cinemark', between(1800, 4200), 'Entertainment');
   if (m === 12 || m === 6) {
     spend(A.amex, 10, 'DELTA AIR LINES', 'Delta', between(32000, 46000), 'Travel');
-    spend(A.amex, 14, 'MARRIOTT HOTELS', 'Marriott', between(38000, 52000), 'Travel');
+    spend(A.amex, 14, 'MARRIOTT HOTELS DENVER CO', 'Marriott', between(38000, 52000), 'Travel');
   }
   if (m === 3) spend(A.amex, 1, 'ANNUAL MEMBERSHIP FEE', 'American Express', 9500, 'Annual Fee');
   if (m % 3 === 1) add(A.freedom, day(y, m, 19), 'AMAZON.COM REFUND', 'Amazon', between(1500, 4500), 'Refund', 'refund');

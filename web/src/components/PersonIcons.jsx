@@ -20,6 +20,6 @@ function GenericPersonIcon() {
   );
 }
 
-export function personIcon() {
+export function PersonIcon() {
   return <GenericPersonIcon />;
 }

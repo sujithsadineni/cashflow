@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react';
 import { api, formatMoney } from '../api';
 import { LoanProgress, LoanInsights } from './LoanProgress';
 import { percentClearedFor, VIVID_LOAN, loanMonthStatus } from '../loan-progress';
-import { useDesign } from '../design-context';
+import { useDesign } from '../use-design';
 import { DetailDialog, ShowMore } from './ui/DetailDialog';
+import { BalanceTransferPanel } from './BalanceTransferPanel';
+import { withStatementDates } from '../balance-transfer';
 
 /**
  * Level 3 of the Loans drill-down: one loan, month by month.
@@ -37,7 +39,7 @@ const STATUS_TEXT = {
 
 const PAID_SOURCE_NOTE = {
   statement: 'Paid is read from the linked card’s statements; remaining is the balance at each month’s end.',
-  lender_match: 'Paid is every Loan payment whose description names this lender; remaining is the balance at each month’s end.',
+  lender_match: 'Paid is every payment out whose description names this lender; remaining is the balance at each month’s end.',
   null: 'This loan has no linked card and no lender, so payments can’t be matched to it — add a lender in Settings → Loans to see them.',
 };
 
@@ -68,7 +70,9 @@ function scheduleMonths(loan) {
   });
 }
 
-export function LoanScheduleDetail({ loan, onClose }) {
+export function LoanScheduleDetail({ loan: rawLoan, onClose }) {
+  // A balance transfer's dates come from its card's statement (D195).
+  const loan = withStatementDates(rawLoan);
   const vivid = useDesign().design === 'vivid';
   const meta = VIVID_LOAN[loan.loan_type] ?? VIVID_LOAN.other;
   const [history, setHistory] = useState(null);
@@ -206,6 +210,7 @@ export function LoanScheduleDetail({ loan, onClose }) {
         tone: 'earn',
       }}
       sections={[
+        loan.bt && { key: 'bt', label: 'Balance transfer', tab: 'Transfer', content: <BalanceTransferPanel loan={loan} /> },
         { key: 'progress', label: 'Progress', content: progress },
         { key: 'calendar', label: 'Month by month', tab: 'Calendar', content: history ? calendar : loading },
         { key: 'list', label: 'Paid and remaining', tab: 'Paid & remaining', count: rows.length || undefined, content: history ? listWithHeader : loading },

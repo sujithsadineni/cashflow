@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useApi } from '../use-api';
+import { txnName } from '../txn-name';
 import { Link } from 'react-router-dom';
 import { api, formatMoney, maskName } from '../api';
 import { MonthPicker } from './MonthPicker';
@@ -9,10 +11,11 @@ import { SpendDetail } from './SpendDetail';
 import { LoansDetail } from './LoansDetail';
 import { SecondaryDetail } from './SecondaryDetail';
 import { ZelleReview } from './ZelleReview';
-import { loanTypeIcon, LOAN_TYPE_LABEL } from './LoanIcons';
+import { LoanTypeIcon } from './LoanIcons';
+import { LOAN_TYPE_LABEL } from '../loan-types';
 import { Segmented, PageTitle } from './Form';
 import { CategoryDonut, SpendMixBars } from './CategoryDonut';
-import { useDesign } from '../design-context';
+import { useDesign } from '../use-design';
 import { motion } from 'motion/react';
 import {
   IncomeIcon, SpentIcon, LoansIcon, SavingsIcon, CashbackIcon, FeeIcon,
@@ -96,13 +99,13 @@ function CompactSummaryCard({ label, value, text, bg, caption, icon, animated })
         animated ? 'group-hover:-translate-y-0.5 group-hover:border-rule-str group-hover:shadow-md' : ''
       }`}
     >
-      {icon && <div className={`absolute inset-x-0 top-0 h-[3px] ${bg}`} />}
+      {icon && <div className={`accent-bar absolute inset-x-0 top-0 h-[3px] ${bg}`} />}
       {icon && animated && <div className={`card-sweep ${text}`} />}
       <div className="relative flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-1.5 text-xs leading-tight text-muted">
           {icon && (
             <span
-              className={`mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-band ${text} ${
+              className={`card-icon mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-band ${text} ${
                 animated ? 'icon-spark transition-transform duration-300 group-hover:scale-110' : ''
               }`}
             >
@@ -198,13 +201,13 @@ function SummaryCard({ label, value, tone = 'ink', caption, to, onClick, icon, a
         animated ? 'group-hover:-translate-y-0.5 group-hover:border-rule-str group-hover:shadow-md' : ''
       }`}
     >
-      {icon && <div className={`absolute inset-x-0 top-0 h-[3px] ${bg}`} />}
+      {icon && <div className={`accent-bar absolute inset-x-0 top-0 h-[3px] ${bg}`} />}
       {icon && animated && <div className={`card-sweep ${text}`} />}
       <div className="relative">
         <div className="flex items-center gap-2 text-sm text-muted">
           {icon && (
             <span
-              className={`inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-band ${text} ${
+              className={`card-icon inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-band ${text} ${
                 animated ? 'icon-spark transition-transform duration-300 group-hover:scale-110' : ''
               }`}
             >
@@ -325,8 +328,8 @@ function BarChart({ buckets, granularity, month, vivid = false }) {
               onMouseLeave={() => setHovered((h) => (h === i ? null : h))}
             >
               <rect x={i * slot} y={plotTop} width={slot} height={plotHeight} fill="transparent" />
-              <rect x={x0} y={plotBottom - spendH} width={barWidth} height={spendH} rx="2" fill={vivid ? 'var(--color-vivid-red)' : 'var(--color-spend)'} />
-              <rect x={x0 + barWidth + gap} y={plotBottom - earnH} width={barWidth} height={earnH} rx="2" fill={vivid ? 'var(--color-vivid-green)' : 'var(--color-earn)'} />
+              <rect className="chart-bar" x={x0} y={plotBottom - spendH} width={barWidth} height={spendH} rx="2" fill={vivid ? 'var(--color-vivid-red)' : 'var(--chart-spend, var(--color-spend))'} />
+              <rect className="chart-bar" x={x0 + barWidth + gap} y={plotBottom - earnH} width={barWidth} height={earnH} rx="2" fill={vivid ? 'var(--color-vivid-green)' : 'var(--chart-earn, var(--color-earn))'} />
               <text
                 x={i * slot + slot / 2} y={H - 8} textAnchor="middle" fontSize="11"
                 fill={selected ? 'var(--color-ink)' : 'var(--color-faint)'}
@@ -398,7 +401,7 @@ function SavedLedger({ year, incomeByMonth, spendByMonth, ytdIncome, ytdSpend, y
             {months.map((m) => (
               <span
                 key={m.key}
-                className={`text-center ${m.saved == null ? '' : m.saved < 0 ? 'text-vivid-loss' : 'text-vivid-green'}`}
+                className={`text-center ${m.saved == null ? '' : m.saved < 0 ? 'text-spend' : 'text-earn'}`}
               >
                 {m.saved == null ? '' : formatMoney(m.saved, { showSign: true, compact: true })}
               </span>
@@ -407,7 +410,7 @@ function SavedLedger({ year, incomeByMonth, spendByMonth, ytdIncome, ytdSpend, y
           <div className={`${LEDGER_GRID} items-center bg-band py-2 font-mono font-medium tnum`}>
             <span className="sticky left-0 z-[1] bg-band pl-3 font-sans font-normal text-muted">Kept</span>
             {months.map((m) => (
-              <span key={m.key} className={`text-center ${m.kept != null && m.kept < 0 ? 'text-vivid-loss' : 'text-ink'}`}>
+              <span key={m.key} className={`text-center ${m.kept != null && m.kept < 0 ? 'text-spend' : 'text-ink'}`}>
                 {m.saved == null ? '' : m.kept == null ? <span className="text-faint">—</span> : `${m.kept}%`}
               </span>
             ))}
@@ -419,7 +422,7 @@ function SavedLedger({ year, incomeByMonth, spendByMonth, ytdIncome, ytdSpend, y
         <span className="flex items-baseline gap-4">
           <span className="text-muted">
             Saved{' '}
-            <span className={`font-mono text-sm font-semibold tnum ${ytdSaved < 0 ? 'text-vivid-loss' : 'text-vivid-green'}`}>
+            <span className={`font-mono text-sm font-semibold tnum ${ytdSaved < 0 ? 'text-spend' : 'text-earn'}`}>
               {formatMoney(ytdSaved, { showSign: true })}
             </span>
           </span>
@@ -492,7 +495,7 @@ function VividLargest({ largest, byCategory }) {
           <MerchantAvatar merchant={t.merchant} description={t.description} amountCents={t.amount_cents} categoryName={t.category_name} categoryIconKey={t.category_icon_key} size={32} />
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="truncate text-sm text-ink" title={t.description}>{t.merchant ?? t.description}</span>
+              <span className="truncate text-sm text-ink" title={t.description}>{txnName(t) ?? t.description}</span>
               <span className="flex shrink-0 items-center gap-1 rounded-full bg-band px-2 py-0.5 text-[11px] text-muted">
                 <span className={`size-1.5 rounded-full ${colorOf(t.category_name)}`} />
                 {t.category_name ?? 'Uncategorized'}
@@ -538,10 +541,11 @@ export function Overview({ accounts = [], people = [], onChange }) {
   const [month, setMonth] = useState(currentMonth());
   const [viewMode, setViewMode] = useState('month');
   const [granularity, setGranularity] = useState('month');
-  const [data, setData] = useState(null);
-  const [trends, setTrends] = useState(null);
+  // The month's summary and the activity chart, together (useApi, D211).
+  const main = useApi(`overview:${month}:${granularity}`, () => Promise.all([api.summary(month), api.transactions.trends(granularity, month)]), { tags: ['transactions', 'loans'] });
+  const [data, trends] = main.data ?? [null, null];
   const [zelleRows, setZelleRows] = useState(null);
-  const [error, setError] = useState(null);
+  const error = main.error;
   const [dialog, setDialog] = useState(null); // 'salary' | 'spend' | null
   const { design } = useDesign();
   const vivid = design === 'vivid';
@@ -558,21 +562,7 @@ export function Overview({ accounts = [], people = [], onChange }) {
     }).catch(() => {});
   }, []);
 
-  const load = useCallback(async () => {
-    try {
-      const [summary, trend] = await Promise.all([
-        api.summary(month),
-        api.transactions.trends(granularity, month),
-      ]);
-      setData(summary);
-      setTrends(trend);
-      setError(null);
-    } catch (err) {
-      setError(err.message);
-    }
-  }, [month, granularity]);
-
-  useEffect(() => { load(); }, [load]);
+  const load = main.reload;
 
   // Independent of month/granularity - the Zelle card's own review
   // count and this-month figures are computed client-side from this,
@@ -672,7 +662,7 @@ export function Overview({ accounts = [], people = [], onChange }) {
           icon={<SpentIcon />}
           tone="spend"
           animated
-          value={`−${formatMoney(spent)}`}
+          value={spent ? `−${formatMoney(spent)}` : formatMoney(0)} // no minus on nothing spent (D253)
           caption={
             !isYtd && prevSpent > 0 && diff !== 0
               ? `${diff > 0 ? '↑' : '↓'} ${formatMoney(Math.abs(diff))} vs last month`
@@ -691,7 +681,7 @@ export function Overview({ accounts = [], people = [], onChange }) {
             hasLoansThisMonth && loanTypes.length > 0 ? (
               <span className="flex items-center gap-1.5">
                 {loanTypes.slice(0, 3).map((t) => (
-                  <span key={t} title={LOAN_TYPE_LABEL[t] ?? t}>{loanTypeIcon(t)}</span>
+                  <span key={t} title={LOAN_TYPE_LABEL[t] ?? t}><LoanTypeIcon type={t} /></span>
                 ))}
                 <span aria-hidden>+</span>
               </span>
@@ -820,10 +810,11 @@ export function Overview({ accounts = [], people = [], onChange }) {
               <Segmented value={granularity} onChange={setGranularity} options={GRANULARITIES} />
             </div>
           </div>
-          {vivid && granularity === 'month' ? (
+          {/* The Saved / Kept ledger under the months: Vivid's, and Glass's (D235). */}
+          {(vivid || design === 'glass') && granularity === 'month' ? (
             <>
               <div className={LEDGER_GUTTER}>
-                <BarChart buckets={trends.buckets} granularity={granularity} month={month} vivid />
+                <BarChart buckets={trends.buckets} granularity={granularity} month={month} vivid={vivid} />
               </div>
               <SavedLedger
                 year={month.slice(0, 4)}
@@ -868,7 +859,7 @@ export function Overview({ accounts = [], people = [], onChange }) {
                   <div className="w-36 truncate text-sm text-ink">{category.name}</div>
                   <div className="flex-1">
                     <div
-                      className={`h-2.5 ${vivid ? 'animate-bar-grow rounded-full' : 'rounded-r'} ${barColor}`}
+                      className={`mix-bar h-2.5 ${vivid ? 'animate-bar-grow rounded-full' : 'rounded-r'} ${barColor}`}
                       style={{ width: `${Math.max((amount / maxCategory) * 100, 1)}%` }}
                     />
                   </div>
@@ -929,7 +920,7 @@ export function Overview({ accounts = [], people = [], onChange }) {
                     />
                   </td>
                   <td className="max-w-md truncate py-2.5 pr-4 text-ink" title={t.description}>
-                    {t.merchant ?? t.description}
+                    {txnName(t) ?? t.description}
                   </td>
                   <td className="py-2.5 pr-4">
                     <span className="rounded-full bg-band px-2 py-0.5 text-xs text-muted">
@@ -977,6 +968,9 @@ export function Overview({ accounts = [], people = [], onChange }) {
       {dialog === 'savings' && (
         <SavingsDetail
           month={monthLabel(month)}
+          monthKey={month}
+          people={people}
+          onAccountsChanged={onChange}
           year={month.slice(0, 4)}
           total={savings.current_savings_cents}
           yearToDate={savings.year_to_date_savings_cents}

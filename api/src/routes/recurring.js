@@ -1,193 +1,228 @@
 /**
- * Recurring expenses: detection proposes, the user confirms.
+ * Recurring bills (D185). Built on bills.js, which holds every rule; this
+ * file only reads and writes.
  *
- * POST /detect runs the classifier in recurring.js against real
- * transaction history and returns candidates — nothing is saved.
- * Confirming one (POST /) both creates the series AND immediately
- * links the historical transactions that produced it (its own
- * "evidence"), so confirming a candidate retroactively tags the
- * purchases you just looked at, not only future ones. Every import
- * approval afterward re-runs matching for the newly approved rows
- * (see matchAndLinkSeries, called from routes/imports.js).
+ *   GET    /api/recurring                      live bills, each with status and history
+ *   GET    /api/recurring/suggestions          what looks like a bill and isn't one yet
+ *   POST   /api/recurring/suggestions/ignore   { key }  never suggest that one again
+ *   POST   /api/recurring                      confirm a suggestion (or add one by hand)
+ *   PATCH  /api/recurring/:id                  name, price, rhythm, day, pause/end/resume
+ *   GET    /api/recurring/:id/charges          the charges linked to a bill
+ *   POST   /api/recurring/:id/unlink           { transaction_id }  "that one isn't this bill"
+ *
+ * A bill's next date and status are computed from its own charges on
+ * every read, never trusted from a stored column (the stored ones are
+ * kept in step for anything that reads the table directly).
  */
 
 import { Router } from 'express';
 import { query, withTransaction } from '../db.js';
 import { audit } from '../audit.js';
 import { changesBetween } from '../changes.js';
-import { validate, recurringCreateSchema, recurringUpdateSchema, recurringLinkSchema, recurringDismissSchema } from '../validate.js';
-import { detectCandidates, matchesRule, addCadence, isLapsed } from '../recurring.js';
+import { validate, billCreateSchema, billUpdateSchema, billIgnoreSchema, billUnlinkSchema } from '../validate.js';
+import { detect, matchBill, billStatus, monthView, suggestionKey } from '../bills.js';
+import { spendSql } from '../spend.js';
 
 export const recurringRouter = Router();
 
-const orNull = (value) => (value === '' || value === undefined ? null : value);
+const today = () => new Date().toLocaleDateString('en-CA');
 
-const SELECT_COLUMNS = `
-  rs.id, rs.name, rs.glyph, rs.category_id, rs.account_id, rs.person_id,
-  rs.match_name_contains, rs.match_amount_min_cents, rs.match_amount_max_cents, rs.match_days_of_month,
-  rs.cadence, rs.cadence_interval, rs.expected_amount_cents, rs.amount_varies,
-  rs.status, rs.next_expected_date, rs.confidence, rs.created_from,
-  rs.first_seen_date, rs.last_seen_date, rs.occurrence_count,
-  a.name AS account_name, c.name AS category_name
-`;
+// Spending, plus loan payments (a car loan is a bill even though it isn't "spend").
+const BILL_ROWS_SQL = `(${spendSql('t')} OR (cat.name = 'Loan' AND t.txn_type = 'payment'))`;
 
-const withLapsed = (row) => ({
-  ...row,
-  lapsed: row.status === 'ACTIVE' && isLapsed(row.next_expected_date, row.cadence, row.cadence_interval),
-});
+/** Keep the stored bookkeeping columns in step with the bill's real charges. */
+async function sync(client, id) {
+  const { rows: [bill] } = await client.query('SELECT * FROM recurring_series WHERE id = $1', [id]);
+  const { rows: charges } = await client.query(
+    'SELECT posted_date::text AS posted_date FROM transaction WHERE recurring_series_id = $1 ORDER BY posted_date',
+    [id]
+  );
+  const st = billStatus(bill, charges, today());
+  await client.query(
+    `UPDATE recurring_series
+        SET occurrence_count = $2, first_seen_date = $3, last_seen_date = $4, next_expected_date = $5, updated_at = now()
+      WHERE id = $1`,
+    [id, charges.length, charges[0]?.posted_date ?? null, st.last_date, st.next_date]
+  );
+}
 
-/**
- * Link every transaction in `transactions` that matches `series` and
- * isn't already linked, then update the series' own bookkeeping
- * (occurrence_count, last/first_seen_date, next_expected_date) and
- * audit each link. Used both for the initial retroactive link on
- * create and for the post-import-approval matcher.
- */
-async function matchAndLinkSeries(series, transactions, client) {
-  const matches = transactions.filter((t) => t.recurring_series_id == null && matchesRule(t, series));
-  if (matches.length === 0) return 0;
-
-  for (const t of matches) {
-    await client.query('UPDATE transaction SET recurring_series_id = $1 WHERE id = $2', [series.id, t.id]);
+/** Link these charges to a bill, audited one by one. */
+async function link(client, bill, charges) {
+  for (const t of charges) {
+    await client.query('UPDATE transaction SET recurring_series_id = $1 WHERE id = $2', [bill.id, t.id]);
     await audit({
       action: 'recurring.linked',
       entityType: 'transaction',
       entityId: t.id,
-      detail: { recurring_series_id: series.id, series_name: series.name, merchant: t.merchant, amount_cents: t.amount_cents },
+      detail: { recurring_series_id: bill.id, series_name: bill.name, amount_cents: t.amount_cents },
     });
   }
-
-  const matchedDates = matches.map((t) => t.posted_date).sort();
-  const newLastSeen = [series.last_seen_date, matchedDates[matchedDates.length - 1]].filter(Boolean).sort().pop();
-  const newFirstSeen = [series.first_seen_date, matchedDates[0]].filter(Boolean).sort()[0];
-  const nextExpected = addCadence(newLastSeen, series.cadence, series.cadence_interval, series.match_days_of_month);
-
-  await client.query(
-    `UPDATE recurring_series
-        SET occurrence_count = occurrence_count + $2,
-            last_seen_date = $3, first_seen_date = $4, next_expected_date = $5,
-            updated_at = now()
-      WHERE id = $1`,
-    [series.id, matches.length, newLastSeen, newFirstSeen, nextExpected]
-  );
-
-  return matches.length;
 }
 
 /**
- * Called from routes/imports.js after an import is approved: matches
- * the newly-approved transactions against every ACTIVE series. Runs
- * inside the same approval transaction (client is the same one
- * imports.js is already using), so a half-linked state never commits.
+ * After an import is approved (routes/imports.js): each new charge goes to
+ * the live bill it belongs to, if any. Runs in the approval's own
+ * transaction, so a half-linked state never commits.
  */
 export async function matchNewTransactions(transactionIds, client) {
   if (transactionIds.length === 0) return;
-
-  const { rows: transactions } = await client.query(
-    `SELECT t.id, t.posted_date::text, t.amount_cents, t.merchant, t.description, t.account_id, t.recurring_series_id, a.person_id
-       FROM transaction t JOIN account a ON a.id = t.account_id
-      WHERE t.id = ANY($1)`,
+  const { rows: txns } = await client.query(
+    `SELECT id, posted_date::text AS posted_date, amount_cents, merchant
+       FROM transaction WHERE id = ANY($1) AND recurring_series_id IS NULL`,
     [transactionIds]
   );
-
-  const { rows: series } = await client.query(`SELECT * FROM recurring_series WHERE status = 'ACTIVE'`);
-
-  for (const s of series) {
-    await matchAndLinkSeries(s, transactions, client);
+  const { rows: bills } = await client.query(`SELECT * FROM recurring_series WHERE status IN ('ACTIVE', 'PAUSED')`);
+  const touched = new Set();
+  for (const t of txns) {
+    const bill = matchBill(t, bills);
+    if (!bill) continue;
+    await link(client, bill, [t]);
+    touched.add(bill.id);
   }
+  for (const id of touched) await sync(client, id);
 }
 
-/* ------------------------------------------------------------------
-   Detect — proposes candidates, saves nothing
-   ------------------------------------------------------------------ */
-
-/**
- * Shared by the manual "Review detected" button (POST /detect below)
- * and the alerts endpoint (routes/alerts.js) — one place that knows
- * how to run the classifier against real history, so the two never
- * drift into scanning different windows or existing-series sets.
- */
-export async function getRecurringCandidates() {
-  const { rows: transactions } = await query(
-    `SELECT t.id, t.posted_date::text, t.amount_cents, t.merchant, t.description, t.account_id, a.person_id
-       FROM transaction t JOIN account a ON a.id = t.account_id
-      WHERE t.amount_cents < 0 AND t.posted_date >= CURRENT_DATE - INTERVAL '2 years'`
+/** Every suggestion, minus the ignored ones. Shared with the alerts. */
+export async function getSuggestions() {
+  const { rows: txns } = await query(
+    `SELECT t.id, t.posted_date::text AS posted_date, t.amount_cents, t.merchant, t.description, t.account_id
+       FROM transaction t LEFT JOIN category cat ON cat.id = t.category_id
+      WHERE t.amount_cents < 0 AND ${BILL_ROWS_SQL} AND t.posted_date >= CURRENT_DATE - INTERVAL '2 years'`
   );
-  // Every existing series, regardless of status — an ENDED one still
-  // means "don't propose this merchant as new," see detectCandidates'
-  // own docs for why.
-  const { rows: existingSeries } = await query(`SELECT * FROM recurring_series`);
-  const candidates = detectCandidates(transactions, existingSeries);
-
-  // A dismissed candidate is the same kind of "don't propose this
-  // again" as an ENDED series above, just for a merchant nobody ever
-  // confirmed — see db/023_dismissed_recurring_candidate.sql.
-  const { rows: dismissed } = await query(`SELECT match_name_contains FROM dismissed_recurring_candidate`);
-  const dismissedNames = new Set(dismissed.map((d) => d.match_name_contains));
-  return candidates.filter((c) => !dismissedNames.has(c.match_name_contains));
+  const { rows: bills } = await query(`SELECT * FROM recurring_series WHERE status <> 'ARCHIVED'`);
+  const { rows: ignored } = await query('SELECT match_name_contains FROM dismissed_recurring_candidate');
+  return detect(txns, bills, { today: today(), ignored: new Set(ignored.map((r) => r.match_name_contains.toLowerCase())) })
+    .map((sug) => ({ ...sug, key: suggestionKey(sug) }));
 }
 
-recurringRouter.post('/detect', async (req, res, next) => {
-  try {
-    res.json(await getRecurringCandidates());
-  } catch (err) {
-    next(err);
-  }
-});
-
-/**
- * Permanent, not a per-session hide — the whole point is that
- * refreshing or re-running detection doesn't bring it back. Only
- * `match_name_contains` is needed: that's the same identity
- * detection itself re-derives every time it runs, so this doesn't
- * need to know anything else about the candidate that proposed it.
- */
-recurringRouter.post('/candidates/dismiss', validate(recurringDismissSchema), async (req, res, next) => {
-  try {
-    const { match_name_contains } = req.body;
-    await query(
-      `INSERT INTO dismissed_recurring_candidate (match_name_contains) VALUES ($1) ON CONFLICT (match_name_contains) DO NOTHING`,
-      [match_name_contains]
-    );
-    await audit({ action: 'recurring.candidate_dismissed', entityType: 'recurring_candidate', detail: { match_name_contains } });
-    res.status(204).end();
-  } catch (err) {
-    next(err);
-  }
-});
-
-/* ------------------------------------------------------------------
-   List
-   ------------------------------------------------------------------ */
+/** Live bills with their status (and, given a 'YYYY-MM', that month's view). Shared with the alerts. */
+export async function getBills({ includeEnded = false, month = null } = {}) {
+  const { rows: bills } = await query(
+    `SELECT * FROM recurring_series WHERE status IN ('ACTIVE', 'PAUSED'${includeEnded ? ", 'ENDED'" : ''}) ORDER BY name`
+  );
+  const { rows: charges } = await query(
+    `SELECT id, recurring_series_id, posted_date::text AS posted_date, amount_cents
+       FROM transaction WHERE recurring_series_id = ANY($1) ORDER BY posted_date`,
+    [bills.map((b) => b.id)]
+  );
+  const t = today();
+  return bills.map((b) => {
+    const own = charges.filter((c) => c.recurring_series_id === b.id);
+    return { ...b, ...billStatus(b, own, t), charge_count: own.length, ...(month ? { month: monthView(b, own, month, t) } : {}) };
+  });
+}
 
 recurringRouter.get('/', async (req, res, next) => {
   try {
-    const includeEnded = req.query.include_ended === 'true';
-
-    const { rows } = await query(
-      `SELECT ${SELECT_COLUMNS}
-         FROM recurring_series rs
-         LEFT JOIN account a ON a.id = rs.account_id
-         LEFT JOIN category c ON c.id = rs.category_id
-        ${includeEnded ? '' : "WHERE rs.status != 'ENDED'"}
-        ORDER BY rs.next_expected_date ASC NULLS LAST, rs.name`
-    );
-
-    res.json(rows.map(withLapsed));
+    const month = typeof req.query.month === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(req.query.month) ? req.query.month : null;
+    if (req.query.month !== undefined && !month) return res.status(400).json({ error: 'Use month=YYYY-MM', field: 'month' });
+    res.json(await getBills({ includeEnded: req.query.include_ended === 'true', month }));
   } catch (err) {
     next(err);
   }
 });
 
-/** A series' own linked transaction history — the Calendar view's click-a-chip detail card. */
-recurringRouter.get('/:id/transactions', async (req, res, next) => {
+recurringRouter.get('/suggestions', async (req, res, next) => {
+  try {
+    res.json(await getSuggestions());
+  } catch (err) {
+    next(err);
+  }
+});
+
+recurringRouter.post('/suggestions/ignore', validate(billIgnoreSchema), async (req, res, next) => {
+  try {
+    const key = req.body.key.toLowerCase();
+    await query('INSERT INTO dismissed_recurring_candidate (match_name_contains) VALUES ($1) ON CONFLICT DO NOTHING', [key]);
+    await audit({ action: 'recurring.suggestion_ignored', detail: { key } });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+recurringRouter.post('/', validate(billCreateSchema), async (req, res, next) => {
+  try {
+    const b = req.body;
+    const bill = await withTransaction(async (client) => {
+      const n = b.charge_ids.length;
+      const { rows: [created] } = await client.query(
+        `INSERT INTO recurring_series
+           (name, glyph, match_name_contains, cadence, match_days_of_month, expected_amount_cents, amount_varies,
+            match_amount_min_cents, match_amount_max_cents, status, confidence, created_from)
+         VALUES ($1, '', $2, $3, $4, $5, $6, $7, $8, 'ACTIVE', $9, $10)
+         RETURNING *`,
+        [
+          b.name, b.merchant, b.cadence, b.day ? [b.day] : null, b.expected_amount_cents, b.amount_varies,
+          b.amount_varies ? b.match_amount_min_cents ?? null : null, b.amount_varies ? b.match_amount_max_cents ?? null : null,
+          n >= 5 ? 'HIGH' : n >= 3 ? 'MEDIUM' : 'LOW', n > 0 ? 'DETECTED' : 'MANUAL',
+        ]
+      );
+      // The suggestion's own charges, plus any other unclaimed charge this bill accepts.
+      const { rows: txns } = await client.query(
+        `SELECT id, posted_date::text AS posted_date, amount_cents, merchant
+           FROM transaction WHERE recurring_series_id IS NULL AND (id = ANY($1) OR lower(merchant) = lower($2))`,
+        [b.charge_ids, b.merchant]
+      );
+      await link(client, created, txns.filter((t) => b.charge_ids.includes(t.id) || matchBill(t, [created])));
+      await sync(client, created.id);
+      return created;
+    });
+    await audit({
+      action: 'recurring.created',
+      entityType: 'recurring_series',
+      entityId: bill.id,
+      detail: { name: bill.name, cadence: bill.cadence, expected_amount_cents: bill.expected_amount_cents },
+    });
+    res.status(201).json(bill);
+  } catch (err) {
+    next(err);
+  }
+});
+
+recurringRouter.patch('/:id', validate(billUpdateSchema), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
+    const { rows: [before] } = await query(`SELECT * FROM recurring_series WHERE id = $1 AND status <> 'ARCHIVED'`, [id]);
+    if (!before) return res.status(404).json({ error: 'Bill not found' });
+
+    // Column names come from this fixed list only, never from the request.
+    const COLUMNS = ['name', 'cadence', 'expected_amount_cents', 'amount_varies', 'status'];
+    const sets = [];
+    const values = [id];
+    for (const col of COLUMNS) {
+      if (req.body[col] === undefined) continue;
+      values.push(req.body[col]);
+      sets.push(`${col} = $${values.length}`);
+    }
+    if (req.body.day !== undefined) {
+      values.push(req.body.day ? [req.body.day] : null);
+      sets.push(`match_days_of_month = $${values.length}`);
+    }
+    const after = await withTransaction(async (client) => {
+      await client.query(`UPDATE recurring_series SET ${sets.join(', ')}, updated_at = now() WHERE id = $1`, values);
+      await sync(client, id);
+      return (await client.query('SELECT * FROM recurring_series WHERE id = $1', [id])).rows[0];
+    });
+    await audit({
+      action: 'recurring.updated',
+      entityType: 'recurring_series',
+      entityId: id,
+      detail: { changes: changesBetween(before, after, [...COLUMNS, 'match_days_of_month']) },
+    });
+    res.json(after);
+  } catch (err) {
+    next(err);
+  }
+});
+
+recurringRouter.get('/:id/charges', async (req, res, next) => {
+  try {
     const { rows } = await query(
-      `SELECT id, posted_date::text, amount_cents, merchant, description, account_id
-         FROM transaction WHERE recurring_series_id = $1
-        ORDER BY posted_date DESC`,
-      [id]
+      `SELECT t.id, t.posted_date::text AS posted_date, t.amount_cents, t.description, a.name AS account_name
+         FROM transaction t JOIN account a ON a.id = t.account_id
+        WHERE t.recurring_series_id = $1 ORDER BY t.posted_date DESC`,
+      [Number(req.params.id)]
     );
     res.json(rows);
   } catch (err) {
@@ -195,215 +230,20 @@ recurringRouter.get('/:id/transactions', async (req, res, next) => {
   }
 });
 
-/* ------------------------------------------------------------------
-   Create — from a candidate, or manually
-   ------------------------------------------------------------------ */
-
-recurringRouter.post('/', validate(recurringCreateSchema), async (req, res, next) => {
-  try {
-    const b = req.body;
-
-    // Guards against the same rule getting created twice — a stale
-    // "Review detected" card confirmed a second time (a double-click,
-    // two tabs open on the same candidate, or the same merchant
-    // re-detected after its only series was ended — see
-    // detectCandidates' docs) posts the exact same body, and nothing
-    // about that request looks invalid on its own. Checks EVERY
-    // status, including ENDED: an ended series' real history should
-    // never get orphaned by a second, empty one — PATCH .../:id
-    // {status: 'ACTIVE'} (Resume) is the only path back onto the
-    // original. IS NOT DISTINCT FROM treats two NULLs as equal (a
-    // plain NULL = NULL comparison wouldn't match), so "any account"
-    // really compares equal to "any account", not silently failing.
-    const { rows: dupes } = await query(
-      `SELECT id, status FROM recurring_series
-        WHERE LOWER(match_name_contains) = LOWER($1)
-          AND match_amount_min_cents IS NOT DISTINCT FROM $2
-          AND match_amount_max_cents IS NOT DISTINCT FROM $3
-          AND account_id IS NOT DISTINCT FROM $4
-          AND person_id IS NOT DISTINCT FROM $5`,
-      [b.match_name_contains, orNull(b.match_amount_min_cents), orNull(b.match_amount_max_cents), orNull(b.account_id), orNull(b.person_id)]
-    );
-    if (dupes.length > 0) {
-      const existing = dupes[0];
-      const error = existing.status === 'ENDED'
-        ? `"${b.match_name_contains}" already has an ended series (id ${existing.id}) — resume it instead of creating a new one`
-        : `A recurring series already matches "${b.match_name_contains}" in that amount range`;
-      return res.status(409).json({ error, existing_id: existing.id });
-    }
-
-    const series = await withTransaction(async (client) => {
-      const { rows } = await client.query(
-        `INSERT INTO recurring_series
-           (name, glyph, category_id, account_id, person_id,
-            match_name_contains, match_amount_min_cents, match_amount_max_cents, match_days_of_month,
-            cadence, cadence_interval, expected_amount_cents, amount_varies,
-            status, next_expected_date, confidence, created_from,
-            first_seen_date, last_seen_date, occurrence_count)
-         VALUES ($1,$2,$3,$4,$5, $6,$7,$8,$9, $10,$11,$12,$13, $14,$15,$16,$17, $18,$19,$20)
-         RETURNING *`,
-        [
-          b.name, b.glyph, orNull(b.category_id), orNull(b.account_id), orNull(b.person_id),
-          b.match_name_contains, orNull(b.match_amount_min_cents), orNull(b.match_amount_max_cents), orNull(b.match_days_of_month),
-          b.cadence, b.cadence_interval, b.expected_amount_cents, b.amount_varies,
-          b.status, orNull(b.next_expected_date), b.confidence, b.created_from,
-          // first_seen_date/last_seen_date/occurrence_count are always
-          // derived below from the transactions actually linked, never
-          // taken from the request body — otherwise a DETECTED
-          // candidate's own counts (already reflecting its evidence)
-          // get added to a second time by the retroactive link just
-          // below, double-counting the same rows.
-          null, null, 0,
-        ]
-      );
-      const created = rows[0];
-
-      // Retroactively link the historical transactions that justify
-      // this rule (the candidate's own evidence, for a DETECTED
-      // series; any past match, for a MANUAL one) — confirming a
-      // recurring bill should tag the purchases you just reviewed,
-      // not only ones that arrive later.
-      const { rows: unlinked } = await client.query(
-        `SELECT t.id, t.posted_date::text, t.amount_cents, t.merchant, t.description, t.account_id, t.recurring_series_id, a.person_id
-           FROM transaction t JOIN account a ON a.id = t.account_id
-          WHERE t.amount_cents < 0 AND t.recurring_series_id IS NULL`
-      );
-      await matchAndLinkSeries(created, unlinked, client);
-
-      const { rows: fresh } = await client.query(`SELECT * FROM recurring_series WHERE id = $1`, [created.id]);
-      return fresh[0];
-    });
-
-    await audit({ action: 'recurring.created', entityType: 'recurring_series', entityId: series.id, detail: { name: series.name, created_from: series.created_from } });
-
-    res.status(201).json(withLapsed(series));
-  } catch (err) {
-    next(err);
-  }
-});
-
-/* ------------------------------------------------------------------
-   Update — fixed allow-list, same pattern as accounts.js/loans.js.
-   No DELETE route: end a series with status: 'ENDED'.
-   ------------------------------------------------------------------ */
-
-recurringRouter.patch('/:id', validate(recurringUpdateSchema), async (req, res, next) => {
+recurringRouter.post('/:id/unlink', validate(billUnlinkSchema), async (req, res, next) => {
   try {
     const id = Number(req.params.id);
-
-    const { rows: existing } = await query('SELECT * FROM recurring_series WHERE id = $1', [id]);
-    if (existing.length === 0) return res.status(404).json({ error: 'Recurring series not found' });
-
-    const allowed = [
-      'name', 'glyph', 'category_id', 'account_id', 'person_id',
-      'match_name_contains', 'match_amount_min_cents', 'match_amount_max_cents', 'match_days_of_month',
-      'cadence', 'cadence_interval', 'expected_amount_cents', 'amount_varies', 'status',
-    ];
-    const sets = [];
-    const values = [];
-
-    for (const field of allowed) {
-      if (req.body[field] !== undefined) {
-        values.push(orNull(req.body[field]));
-        sets.push(`${field} = $${values.length}`);
-      }
-    }
-
-    if (sets.length === 0) return res.status(400).json({ error: 'Nothing to update' });
-
-    values.push(id);
-
-    const { rows } = await query(
-      `UPDATE recurring_series SET ${sets.join(', ')}, updated_at = now() WHERE id = $${values.length} RETURNING *`,
-      values
-    );
-
-    await audit({ action: 'recurring.updated', entityType: 'recurring_series', entityId: id, detail: { changed: Object.keys(req.body), changes: changesBetween(existing[0], rows[0], Object.keys(req.body)) } });
-
-    res.json(withLapsed(rows[0]));
-  } catch (err) {
-    next(err);
-  }
-});
-
-/* ------------------------------------------------------------------
-   Manual link / unlink
-   ------------------------------------------------------------------ */
-
-recurringRouter.post('/:id/link', validate(recurringLinkSchema), async (req, res, next) => {
-  try {
-    const id = Number(req.params.id);
-    const { transaction_id } = req.body;
-    let notFound = null;
-
-    await withTransaction(async (client) => {
-      const { rows: seriesRows } = await client.query('SELECT * FROM recurring_series WHERE id = $1', [id]);
-      if (seriesRows.length === 0) { notFound = 'Recurring series not found'; return; }
-      const series = seriesRows[0];
-
-      const { rows: txnRows } = await client.query('SELECT id, posted_date::text AS posted_date FROM transaction WHERE id = $1', [transaction_id]);
-      if (txnRows.length === 0) { notFound = 'Transaction not found'; return; }
-      const txn = txnRows[0];
-
-      // Manual link is a deliberate override, not a rule match — it
-      // updates the transaction directly rather than going through
-      // matchesRule, but keeps the same series bookkeeping (occurrence
-      // count, first/last seen, next_expected_date) any other match does.
-      await client.query('UPDATE transaction SET recurring_series_id = $1 WHERE id = $2', [id, transaction_id]);
-
-      const newLastSeen = [series.last_seen_date, txn.posted_date].filter(Boolean).sort().pop();
-      const newFirstSeen = [series.first_seen_date, txn.posted_date].filter(Boolean).sort()[0];
-      const nextExpected = addCadence(newLastSeen, series.cadence, series.cadence_interval, series.match_days_of_month);
-
-      await client.query(
-        `UPDATE recurring_series
-            SET occurrence_count = occurrence_count + 1, last_seen_date = $2, first_seen_date = $3, next_expected_date = $4, updated_at = now()
-          WHERE id = $1`,
-        [id, newLastSeen, newFirstSeen, nextExpected]
-      );
-
-      await audit({ action: 'recurring.linked', entityType: 'transaction', entityId: transaction_id, detail: { recurring_series_id: id, manual: true } });
-    });
-
-    if (notFound) return res.status(404).json({ error: notFound });
-    res.json({ ok: true });
-  } catch (err) {
-    next(err);
-  }
-});
-
-recurringRouter.post('/:id/unlink', validate(recurringLinkSchema), async (req, res, next) => {
-  try {
-    const id = Number(req.params.id);
-    const { transaction_id } = req.body;
-    let notFound = null;
-
-    await withTransaction(async (client) => {
+    const done = await withTransaction(async (client) => {
       const { rowCount } = await client.query(
         'UPDATE transaction SET recurring_series_id = NULL WHERE id = $1 AND recurring_series_id = $2',
-        [transaction_id, id]
+        [req.body.transaction_id, id]
       );
-      if (rowCount === 0) { notFound = 'That transaction is not linked to this series'; return; }
-
-      const { rows: seriesRows } = await client.query('SELECT * FROM recurring_series WHERE id = $1', [id]);
-      const series = seriesRows[0];
-
-      const { rows: remaining } = await client.query(
-        'SELECT COUNT(*)::int AS count, MAX(posted_date)::text AS last_seen FROM transaction WHERE recurring_series_id = $1',
-        [id]
-      );
-      const { count, last_seen } = remaining[0];
-      const nextExpected = last_seen ? addCadence(last_seen, series.cadence, series.cadence_interval, series.match_days_of_month) : series.next_expected_date;
-
-      await client.query(
-        'UPDATE recurring_series SET occurrence_count = $2, last_seen_date = $3, next_expected_date = $4, updated_at = now() WHERE id = $1',
-        [id, count, last_seen, nextExpected]
-      );
-
-      await audit({ action: 'recurring.unlinked', entityType: 'transaction', entityId: transaction_id, detail: { recurring_series_id: id } });
+      if (rowCount === 0) return false;
+      await sync(client, id);
+      return true;
     });
-
-    if (notFound) return res.status(404).json({ error: notFound });
+    if (!done) return res.status(404).json({ error: 'That charge is not linked to this bill' });
+    await audit({ action: 'recurring.unlinked', entityType: 'transaction', entityId: req.body.transaction_id, detail: { recurring_series_id: id } });
     res.json({ ok: true });
   } catch (err) {
     next(err);

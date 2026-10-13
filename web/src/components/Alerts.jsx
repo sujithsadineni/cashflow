@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useApi } from '../use-api';
 import { Link } from 'react-router-dom';
 import { api, formatMoney } from '../api';
 import { MonthPicker } from './MonthPicker';
@@ -179,7 +180,7 @@ function AlertCard({ alert }) {
         cleared ? 'opacity-60' : 'group-hover:-translate-y-0.5 group-hover:border-rule-str group-hover:shadow-md'
       }`}
     >
-      {!cleared && <div className={`absolute inset-x-0 top-0 h-[3px] ${tone.dot}`} />}
+      {!cleared && <div className={`accent-bar absolute inset-x-0 top-0 h-[3px] ${tone.dot}`} />}
       {!cleared && <div className={`card-sweep ${tone.text}`} />}
       <div className="relative flex items-center gap-3">
         <span
@@ -279,20 +280,14 @@ export function Alerts() {
   const [month, setMonth] = useState(currentMonth());
   const [viewMode, setViewMode] = useState('month');
   const [filter, setFilter] = useState(null); // null | 'RECURRING' | 'CARDS'
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-
   const isYtd = viewMode === 'ytd';
-
-  const load = useCallback(() => {
-    setLoading(true);
-    const request = isYtd
-      ? api.alertHistory({ year: month.slice(0, 4), ytd: true })
-      : api.alertHistory({ month });
-    request.then(setData).catch(() => setData(null)).finally(() => setLoading(false));
-  }, [month, isYtd]);
-
-  useEffect(load, [load]);
+  const history = useApi(
+    isYtd ? `alerts:ytd:${month.slice(0, 4)}` : `alerts:${month}`,
+    () => (isYtd ? api.alertHistory({ year: month.slice(0, 4), ytd: true }) : api.alertHistory({ month })),
+  );
+  // A failed load shows nothing rather than an error, as before.
+  const data = history.error ? null : history.data ?? null;
+  const loading = history.loading;
 
   const active = useMemo(() => (data ? sortByPriority(data.active) : []), [data]);
   const cleared = useMemo(() => (data ? sortByPriority(data.cleared).reverse() : []), [data]);

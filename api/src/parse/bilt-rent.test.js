@@ -39,7 +39,7 @@ test('the real card statement payment stays Card Payment and excluded from spend
 });
 
 test('an unrelated description is left alone', () => {
-  assert.equal(biltRentRuleFor('COSTCO WHSE #0187 770-622-1330 GA'), null);
+  assert.equal(biltRentRuleFor('COSTCO WHSE #0101 770-555-0101 GA'), null);
 });
 
 test('null/empty description does not throw', () => {

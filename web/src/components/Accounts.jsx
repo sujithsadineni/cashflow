@@ -1,9 +1,12 @@
 import { useState } from 'react';
-import { api, ACCOUNT_TYPES, typeLabel, maskName } from '../api';
+import { api, typeLabel, maskName } from '../api';
 import { Field, TextInput, Select, Button, SectionHeader } from './Form';
-import { useNotify } from '../notification-context';
-import { useDesign } from '../design-context';
+import { useNotify } from '../use-notify';
+import { useDesign } from '../use-design';
 import { PersonAvatar } from './ui/PersonAvatar';
+import { ACCOUNT_TYPE_CHOICES, personChoices } from '../dropdown-choices';
+import { accountArt } from '../account-art';
+import { GroupSection, Group, Row } from './settings/glass-ui';
 
 const EMPTY = {
   person_id: '',
@@ -46,12 +49,12 @@ function AddAccountForm({ people, onCreated, onCancel }) {
           <Select
             value={form.person_id}
             onChange={set('person_id')}
-            options={people.map((p) => ({ value: String(p.id), label: maskName(p.name) }))}
+            options={personChoices(people)}
           />
         </Field>
 
         <Field label="Type">
-          <Select value={form.account_type} onChange={set('account_type')} options={ACCOUNT_TYPES} />
+          <Select value={form.account_type} onChange={set('account_type')} options={ACCOUNT_TYPE_CHOICES} />
         </Field>
 
         <Field
@@ -155,8 +158,91 @@ function VividAccountGrid({ accounts, people }) {
   );
 }
 
+/** The account as a little card, the same art Glass People and the intro use. */
+function MiniCard({ account }) {
+  const art = accountArt(account);
+  return (
+    <span
+      className="relative flex h-[26px] w-10 shrink-0 items-end justify-end overflow-hidden rounded-[5px] p-0.5 shadow-[0_0_0_0.5px_rgb(0_0_0/0.12),0_1px_2px_rgb(0_0_0/0.15)]"
+      style={art.style}
+      aria-hidden="true"
+    >
+      {art.logo && <img src={art.logo} alt="" className="h-2.5 w-auto rounded-[2px] bg-white/90 px-px" />}
+    </span>
+  );
+}
+
+/**
+ * Glass (D244): cards and bank accounts as two grouped lists, each row with
+ * the account's own card art, owner and issuer underneath, and the count as
+ * a right-aligned figure ("71", not "71 / transactions" stacked).
+ */
+function GlassAccounts({ accounts, people, adding, setAdding, onCreated }) {
+  const groups = [
+    { label: 'Cards', rows: accounts.filter((a) => a.account_type === 'CREDIT_CARD') },
+    { label: 'Bank accounts', rows: accounts.filter((a) => a.account_type !== 'CREDIT_CARD') },
+  ].filter((g) => g.rows.length > 0);
+
+  return (
+    <div className="space-y-8">
+      {adding && (
+        <GroupSection label="New account">
+          <AddAccountForm people={people} onCreated={onCreated} onCancel={() => setAdding(false)} />
+        </GroupSection>
+      )}
+      {accounts.length === 0 && !adding && (
+        <Group as="div" className="px-6 py-10 text-center">
+          <p className="text-[17px] font-semibold text-ink">No accounts yet</p>
+          <p className="mx-auto mt-1 mb-5 max-w-sm text-[13px] text-muted">
+            Add a card or bank account, then upload a statement to fill it with history.
+          </p>
+          <Button onClick={() => setAdding(true)}>Add Account</Button>
+        </Group>
+      )}
+      {/* Wide screens: cards and bank accounts side by side (D245). */}
+      <div className="grid grid-cols-1 gap-8 xl:grid-cols-2 xl:items-start">
+      {groups.map((g, i) => (
+        <GroupSection
+          key={g.label}
+          label={`${g.label} · ${g.rows.length}`}
+          footnote={i === groups.length - 1 ? 'The number on the right is how many transactions each account holds.' : null}
+          action={i === 0 && !adding && (
+            <button type="button" onClick={() => setAdding(true)} className="text-[13px] font-medium text-info">Add Account</button>
+          )}
+        >
+          <Group inset={68}>
+            {g.rows.map((account) => {
+              const count = Number(account.transaction_count);
+              return (
+                <Row
+                  key={account.id}
+                  leading={<MiniCard account={account} />}
+                  title={
+                    <>
+                      {account.name}
+                      {account.mask && <span className="ml-1.5 text-[13px] text-faint tnum">··{account.mask}</span>}
+                    </>
+                  }
+                  subtitle={[maskName(account.person_name), account.issuer].filter(Boolean).join(' · ')}
+                  trailing={
+                    <span className="text-[15px] text-muted tnum" title={`${count} transaction${count === 1 ? '' : 's'}`}>
+                      {count}<span className="sr-only"> transaction{count === 1 ? '' : 's'}</span>
+                    </span>
+                  }
+                />
+              );
+            })}
+          </Group>
+        </GroupSection>
+      ))}
+      </div>
+    </div>
+  );
+}
+
 export function Accounts({ accounts, people, onChange }) {
-  const vivid = useDesign().design === 'vivid';
+  const { design } = useDesign();
+  const vivid = design === 'vivid';
   const notify = useNotify();
   const [adding, setAdding] = useState(false);
 
@@ -165,6 +251,10 @@ export function Accounts({ accounts, people, onChange }) {
     onChange();   // refetch, so the list reflects what the server actually has
     notify(`${account.name} added`, { type: 'success' });
   };
+
+  if (design === 'glass') {
+    return <GlassAccounts accounts={accounts} people={people} adding={adding} setAdding={setAdding} onCreated={handleCreated} />;
+  }
 
   return (
     <section className="mb-12">

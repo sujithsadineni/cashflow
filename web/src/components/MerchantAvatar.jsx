@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { lookupMerchantDomain, avatarColorFor, initialsFor } from '../merchant-logos';
-import { useMerchantIcon } from '../merchant-icons-context';
-import { CategoryGlyph, defaultIconFor } from '../category-icons';
+import { useMerchantIcon } from '../use-merchant-icons';
+import { CategoryGlyph } from '../category-icons';
+import { defaultIconFor } from '../category-icon-keys';
 
 /** A card-payment glyph, not a bare "?" — `merchant` is deliberately
  * null for these rows (paying your own card bill isn't a purchase at
@@ -111,12 +112,14 @@ export function MerchantAvatar({ merchant, description, contact, txnType, amount
     ? `See spend history for ${merchant}`
     : contactLabel ?? (isZelle ? 'Zelle' : isCardPayment ? 'Card payment' : isInterestEarned ? 'Interest earned' : categoryName ?? undefined);
 
+  // Not clickable → a plain span, so a logo can sit inside a clickable row
+  // (Review's list, a settings row) without a button nested in a button (D253).
+  const Tag = clickable ? 'button' : 'span';
   return (
-    <button
-      onClick={onClick}
-      disabled={!clickable}
+    <Tag
+      {...(clickable ? { type: 'button', onClick } : {})}
       title={title}
-      className="shrink-0 overflow-hidden rounded-lg transition-transform enabled:hover:scale-110 disabled:cursor-default"
+      className={`block shrink-0 overflow-hidden rounded-lg transition-transform ${clickable ? 'hover:scale-110' : 'cursor-default'}`}
       style={style}
     >
       {hasContactPhoto ? (
@@ -177,6 +180,6 @@ export function MerchantAvatar({ merchant, description, contact, txnType, amount
           {initialsFor(merchant)}
         </span>
       )}
-    </button>
+    </Tag>
   );
 }

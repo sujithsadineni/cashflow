@@ -1,16 +1,21 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { motion } from 'motion/react';
 import { api } from '../api';
+import { MerchantAvatar } from './MerchantAvatar';
 import { Button, PageTitle } from './Form';
 import { Review } from './Review';
+import { ReadingStatement } from './ReadingStatement';
 import { AccountFilter } from './AccountFilter';
-import { useAccountFilters, AccountFilterBar } from './AccountFilters';
+import { AccountFilterBar } from './AccountFilters';
+import { useAccountFilters } from '../account-filters';
 import { MonthStatusGrid } from './MonthStatusGrid';
 import { bankBrandFor } from '../bankBrands';
-import { useNotify } from '../notification-context';
+import { useNotify } from '../use-notify';
+import { useApi } from '../use-api';
 
 // Kept in sync by hand with api/src/parse/pdf-local.js's LOCAL_PARSER_ISSUERS —
 // a plain display list, not worth a round trip to the API for.
-const LOCAL_PARSER_ISSUERS = ['Bank of America', 'American Express', 'Chase', 'Bilt'];
+const LOCAL_PARSER_ISSUERS = ['Bank of America', 'American Express', 'Chase', 'Bilt', 'Robinhood', 'Barclays', 'SoFi', 'Apple Card', 'Zolve'];
 
 const STATUS_LABELS = {
   UPLOADED: 'Uploaded',
@@ -75,57 +80,23 @@ function StatusChip({ status }) {
 const needsPassword = (batch) =>
   batch.status === 'FAILED' && /password/i.test(batch.error_message ?? '');
 
-const uploadIconProps = { width: 16, height: 16, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': true };
-const uploadStrokeProps = { stroke: 'currentColor', strokeWidth: 1.4, strokeLinecap: 'round', strokeLinejoin: 'round' };
-
-// Cloud (goes out to the API) vs. a shield (verified locally, never
-// leaves the machine) — a real, meaningful difference between the two
-// boxes, not decoration for its own sake. Line icons, not emoji: this
-// app's design system explicitly avoids emoji everywhere else, and a
-// third visual vocabulary for just these two boxes would read as
-// inconsistent next to the sidebar/Overview icons.
-function CloudUploadIcon() {
-  return (
-    <svg {...uploadIconProps}>
-      <path d="M4.5 11.5a2.8 2.8 0 01-.4-5.57 3.3 3.3 0 016.3-1.2 2.6 2.6 0 013.1 2.55 2.4 2.4 0 01-.5 4.22" {...uploadStrokeProps} />
-      <path d="M8 6.5v5.5M6 8.5L8 6.5l2 2" {...uploadStrokeProps} />
-    </svg>
-  );
-}
-
-function ShieldCheckIcon() {
-  return (
-    <svg {...uploadIconProps}>
-      <path d="M8 1.8l4.8 1.7v4c0 3-2 5.4-4.8 6.7-2.8-1.3-4.8-3.7-4.8-6.7v-4L8 1.8z" {...uploadStrokeProps} />
-      <path d="M5.7 8.2l1.6 1.6 3-3.2" {...uploadStrokeProps} />
-    </svg>
-  );
-}
-
 /**
- * One of the two upload zones on the Statements page, side by side —
- * "Claude API" (left, costs money, reads any issuer) and "Local
- * parsing" (right, free, only the issuers parse/pdf-local.js actually
- * knows how to read). Same shape, different copy/icon/accent, so
- * choosing between them reads as one decision, not two dissimilar
- * forms bolted together.
+ * The one drop zone (D182, design A of four). Every file is read free,
+ * on this machine, first. A wide, low row (icon, words, the banks it
+ * reads, the button) rather than a tall centered box, so it doesn't
+ * waste the page's width. Dragging a file over swells the zone and
+ * bounces the bank logos, which answers the person's own action.
  *
- * Compact by design (asked for directly — the original was a tall
- * vertical stack: label, native file input on its own row, a long
- * wrapped caption, then the button on yet another row). This packs
- * icon + title + a one-line caption into a single header row, and
- * turns "Choose File" + "Upload & analyze" into one drop target that
- * doubles as the button, rather than three separate controls.
+ * Claude never runs from here. If the free parser doesn't know the
+ * bank, the page asks first (ClaudeOffer below).
  */
-function UploadBox({ title, caption, icon, accent, accentText, fileRef, onUpload, uploading, fileName, onFileChosen }) {
+function DropZone({ fileRef, fileName, onFileChosen, onUpload, uploading }) {
   const [dragOver, setDragOver] = useState(false);
 
   function acceptFiles(fileList) {
     const file = fileList?.[0];
     if (!file) return;
-    // Puts the dropped/re-picked file onto the SAME hidden <input>
-    // upload() already reads from — no change needed to that function,
-    // drag-and-drop and click-to-browse both just populate one ref.
+    // Puts the dropped file onto the same hidden <input> upload() reads.
     const transfer = new DataTransfer();
     transfer.items.add(file);
     fileRef.current.files = transfer.files;
@@ -133,58 +104,91 @@ function UploadBox({ title, caption, icon, accent, accentText, fileRef, onUpload
   }
 
   return (
-    <div className="group relative flex-1 overflow-hidden rounded-xl border border-rule bg-raised p-4 transition-all hover:border-rule-str hover:shadow-md">
-      <div className={`absolute inset-x-0 top-0 h-[3px] ${accent}`} />
-      <div className="relative flex items-center gap-2.5">
-        <span className={`icon-spark flex size-8 shrink-0 items-center justify-center rounded-full bg-band ${accentText} transition-transform duration-300 group-hover:scale-110`}>
-          {icon}
-        </span>
-        <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-medium text-ink">{title}</h3>
-          <p className="truncate text-xs text-faint">{caption}</p>
-        </div>
-      </div>
-
-      <div className="relative mt-3 flex items-center gap-2">
-        <div
+    <motion.div
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => { e.preventDefault(); setDragOver(false); acceptFiles(e.dataTransfer.files); }}
+      animate={{ scale: dragOver ? 1.01 : 1 }}
+      transition={{ type: 'spring', stiffness: 260, damping: 20 }}
+      className={`rounded-2xl border-2 border-dashed px-5 py-4 transition-colors ${
+        dragOver ? 'border-earn bg-earn/5' : 'border-rule-str bg-raised'
+      }`}
+    >
+      <div className="flex flex-col items-stretch gap-4 md:flex-row md:items-center">
+        <button
+          type="button"
           onClick={() => fileRef.current?.click()}
-          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={(e) => { e.preventDefault(); setDragOver(false); acceptFiles(e.dataTransfer.files); }}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') fileRef.current?.click(); }}
-          className={`flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-lg border border-dashed px-2.5 py-1.5 text-xs transition-colors ${
-            dragOver ? 'border-ink bg-band text-ink' : 'border-rule-str text-muted hover:bg-band/60 hover:text-ink'
-          }`}
+          className="flex min-w-0 flex-1 items-center gap-4 text-left"
         >
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="shrink-0">
-            <path d="M8 2v7M5 6.5L8 9.5l3-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-            <path d="M2.5 11.5v1a1 1 0 001 1h9a1 1 0 001-1v-1" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <span className="truncate">{fileName ?? 'Drop file, or click to browse'}</span>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".pdf,.csv"
-            className="hidden"
-            onChange={(e) => acceptFiles(e.target.files)}
-          />
+          <motion.span
+            className="flex size-12 shrink-0 items-center justify-center rounded-full bg-earn/10 text-earn"
+            animate={dragOver ? { y: [0, -5, 0] } : { y: 0 }}
+            transition={dragOver ? { duration: 0.9, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.2 }}
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M12 15V4M7.5 8.5L12 4l4.5 4.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+            </svg>
+          </motion.span>
+          <span className="min-w-0">
+            <span className="block text-base text-ink md:truncate">
+              {fileName ?? (dragOver ? 'Drop it here' : 'Drop a statement, PDF or CSV, or click to browse')}
+            </span>
+            <span className="block text-sm text-muted">Read free on your computer. Nothing leaves this machine.</span>
+          </span>
+        </button>
+
+        <div className="flex shrink-0 flex-wrap items-center gap-2" aria-label={`Read free: ${LOCAL_PARSER_ISSUERS.join(', ')} and any CSV`}>
+          {LOCAL_PARSER_ISSUERS.map((bank, i) => (
+            <motion.span
+              key={bank}
+              title={bank}
+              animate={dragOver ? { y: [0, -5, 0] } : { y: 0 }}
+              transition={dragOver ? { duration: 0.8, delay: i * 0.08, repeat: Infinity } : { duration: 0.2 }}
+            >
+              <MerchantAvatar merchant={bank} size={26} clickable={false} />
+            </motion.span>
+          ))}
+          <span className="ml-1 text-xs whitespace-nowrap text-faint">+ any CSV</span>
         </div>
-        <Button size="sm" onClick={onUpload} disabled={uploading}>
-          {uploading ? '…' : 'Upload'}
+
+        <Button onClick={onUpload} disabled={uploading || !fileName}>
+          {uploading ? 'Reading…' : 'Read it, free'}
         </Button>
+        <input ref={fileRef} type="file" accept=".pdf,.csv" className="hidden" onChange={(e) => acceptFiles(e.target.files)} />
       </div>
 
-      {uploading && (
-        <div className="relative mt-2 h-1 overflow-hidden rounded-full bg-band" aria-hidden="true">
-          <div className={`absolute inset-y-0 w-1/3 rounded-full ${accent} animate-upload-progress`} />
-        </div>
-      )}
-    </div>
+      {uploading && <ReadingStatement fileName={fileName} />}
+    </motion.div>
   );
 }
 
+/**
+ * Asked, never assumed (D182): a PDF the free parser couldn't read can
+ * go to Claude, but only from this explicit button, for this one file.
+ */
+function ClaudeOffer({ offer, onAccept, onDismiss, busy }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -6 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="mt-3 rounded-xl border border-warn/40 bg-warn/10 p-4 text-sm"
+      role="alert"
+    >
+      <p className="text-ink">
+        <span className="font-medium">{offer.fileName}</span> couldn't be read for free.{' '}
+        <span className="text-muted">{offer.reason}</span>
+      </p>
+      <p className="mt-1 text-muted">
+        Claude can read it instead: its transaction pages are sent to Anthropic, and it costs a few cents. Only if you say so.
+      </p>
+      <div className="mt-3 flex gap-2">
+        <Button size="sm" onClick={onAccept} disabled={busy}>{busy ? 'Reading with Claude…' : 'Read with Claude'}</Button>
+        <Button size="sm" variant="quiet" onClick={onDismiss} disabled={busy}>Not now</Button>
+      </div>
+    </motion.div>
+  );
+}
 /**
  * One statement, in either the "needs attention" strip, the wallet's
  * right pane, or the year-grid's popup dialog. `onCloseModal`, when
@@ -195,7 +199,7 @@ function UploadBox({ title, caption, icon, accent, accentText, fileRef, onUpload
  * outside the card entirely, disconnected from its own header and
  * redundant with the "Close" text link still inside it.
  */
-function BatchCard({ batch, label, isOpen, onToggleOpen, onCloseModal, parsingId, onParse, onDelete, report, categories, accounts, people, onApproved }) {
+function BatchCard({ batch, label, isOpen, onToggleOpen, onCloseModal, parsingId, onParse, onDelete, report, categories, accounts, people, onApproved, reveal, showReading, onReadWithClaude }) {
   const isParsing = parsingId === batch.id;
   const [password, setPassword] = useState('');
   const reviewOpen = Boolean(onCloseModal) || isOpen;
@@ -278,6 +282,15 @@ function BatchCard({ batch, label, isOpen, onToggleOpen, onCloseModal, parsingId
                 Parse{batch.file_type === 'PDF' && batch.parse_method !== 'local' ? ' (costs money)' : ''}
               </button>
             ))}
+          {batch.status === 'FAILED' && batch.file_type === 'PDF' && batch.parse_method === 'local' && !needsPassword(batch) && !isParsing && (
+            <button
+              onClick={onReadWithClaude}
+              disabled={parsingId !== null}
+              className="text-sm text-ink underline-offset-4 hover:underline disabled:opacity-50"
+            >
+              Read with Claude
+            </button>
+          )}
           {!onCloseModal && ['NEEDS_ACCOUNT', 'REVIEW', 'APPROVED'].includes(batch.status) && (
             <button
               onClick={onToggleOpen}
@@ -306,6 +319,8 @@ function BatchCard({ batch, label, isOpen, onToggleOpen, onCloseModal, parsingId
           )}
         </div>
       </div>
+
+      {isParsing && showReading && <ReadingStatement fileName={batch.original_filename} fileType={batch.file_type} />}
 
       {report && report.parse_method === 'local' ? (
         <div className="mt-2 rounded-md border border-rule bg-band/40 px-3 py-2 text-xs text-muted">
@@ -340,6 +355,7 @@ function BatchCard({ batch, label, isOpen, onToggleOpen, onCloseModal, parsingId
       {reviewOpen && (
         <Review
           batchId={batch.id}
+          reveal={reveal}
           categories={categories}
           accounts={accounts}
           people={people}
@@ -352,66 +368,95 @@ function BatchCard({ batch, label, isOpen, onToggleOpen, onCloseModal, parsingId
 
 export function Imports({ accounts, people, categories, onChange }) {
   const notify = useNotify();
-  const [batches, setBatches] = useState([]);
-  const [error, setError] = useState(null);
+  // The statement list (D211): loaded by useApi, refreshed in place by
+  // load() after an upload or approval, which callers await.
+  const list = useApi('imports', () => api.imports.list(), { tags: ['imports'] });
+  const batches = list.data ?? [];
+  const [actionError, setError] = useState(null);
+  const error = actionError ?? list.error;
   const [uploading, setUploading] = useState(null); // null | 'api' | 'local' — which box is busy
   const [openBatchId, setOpenBatchId] = useState(null);
+  const [revealId, setRevealId] = useState(null); // batch just parsed: its Review plays the reading reveal once
   const [modalBatchId, setModalBatchId] = useState(null); // batch shown in the year-grid's popup dialog
   const [parsingId, setParsingId] = useState(null);
   const [reports, setReports] = useState({}); // batchId -> last parse report (PDF only)
-  const [selectedAccountId, setSelectedAccountId] = useState(null);
-  const [yearIdx, setYearIdx] = useState(0);
-  const apiFileRef = useRef(null);
-  const localFileRef = useRef(null);
-  const [apiFileName, setApiFileName] = useState(null);
-  const [localFileName, setLocalFileName] = useState(null);
+  const [pickedAccountId, setSelectedAccountId] = useState(null);
+  const [yearPick, setYearPick] = useState({ accountId: null, idx: 0 });
+  const fileRef = useRef(null);
+  const [fileName, setFileName] = useState(null);
+  const [claudeOffer, setClaudeOffer] = useState(null); // { batchId, fileName, reason } after a free read fails
 
-  const load = useCallback(async () => {
+  const load = async () => {
     try {
-      setBatches(await api.imports.list());
+      list.setData(await api.imports.list());
     } catch (err) {
       setError(err.message);
     }
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
+  };
 
   /**
-   * Upload the file. CSV parsing is a local regex pass plus one cheap
-   * Haiku call (fractions of a cent) so it still parses immediately —
-   * one less click either way. A PDF uploaded through the "Claude"
-   * box is a real-money API call and never fires without an explicit,
-   * confirmed click: see parse() below. A PDF uploaded through the
-   * "Local parsing" box costs nothing, so it auto-parses too, same as
-   * CSV — there's no cost gate to protect against.
+   * Upload and read the file, free, on this machine (D182). If the free
+   * parser can't read a PDF (a bank it doesn't know yet), the page asks
+   * whether to use Claude instead; it never switches on its own.
    */
-  async function upload(fileRef, parseMethod, setFileName) {
+  async function upload() {
     const file = fileRef.current?.files?.[0];
     if (!file) {
       setError('Choose a statement file first');
       return;
     }
-    setUploading(parseMethod);
+    setUploading('local');
     setError(null);
+    setClaudeOffer(null);
+    const started = Date.now();
+    let batch = null;
     try {
-      const batch = await api.imports.upload(file, parseMethod);
-      if (batch.file_type === 'CSV' || parseMethod === 'local') {
-        setParsingId(batch.id);
-        await load();
-        const result = await api.imports.parse(batch.id);
-        if (result.report) setReports((r) => ({ ...r, [batch.id]: result.report }));
-        setOpenBatchId(batch.id);
-      }
+      batch = await api.imports.upload(file, 'local');
+      setParsingId(batch.id);
+      await load();
+      const result = await api.imports.parse(batch.id);
+      // A CSV reads in a fraction of a second; hold the reading animation
+      // long enough to be seen instead of a flash.
+      await new Promise((r) => setTimeout(r, Math.max(0, 2000 - (Date.now() - started))));
+      if (result.report) setReports((r) => ({ ...r, [batch.id]: result.report }));
+      setRevealId(batch.id);
+      setOpenBatchId(batch.id);
       fileRef.current.value = '';
       setFileName(null);
       await load();
-      notify(`${file.name} uploaded`, { type: 'success' });
+      notify(`${file.name} read`, { type: 'success' });
+    } catch (err) {
+      await load();
+      if (batch && batch.file_type === 'PDF' && !/password/i.test(err.message)) {
+        setClaudeOffer({ batchId: batch.id, fileName: file.name, reason: err.message });
+        fileRef.current.value = '';
+        setFileName(null);
+      } else {
+        setError(err.message);
+        notify(`Couldn't read ${file.name}: ${err.message}`, { type: 'error' });
+      }
+    } finally {
+      setUploading(null);
+      setParsingId(null);
+    }
+  }
+
+  /** The one way a PDF reaches Claude: the person said yes to this file. */
+  async function readWithClaude(batchId) {
+    setError(null);
+    setParsingId(batchId);
+    try {
+      const result = await api.imports.parse(batchId, undefined, 'api');
+      if (result.report) setReports((r) => ({ ...r, [batchId]: result.report }));
+      setClaudeOffer(null);
+      setRevealId(batchId);
+      setOpenBatchId(batchId);
+      await load();
     } catch (err) {
       setError(err.message);
       await load();
-      notify(`Upload failed: ${err.message}`, { type: 'error' });
+      notify(`Claude couldn't read it: ${err.message}`, { type: 'error' });
     } finally {
-      setUploading(null);
       setParsingId(null);
     }
   }
@@ -435,6 +480,7 @@ export function Imports({ accounts, people, categories, onChange }) {
     try {
       const result = await api.imports.parse(batchId, password);
       if (result.report) setReports((r) => ({ ...r, [batchId]: result.report }));
+      setRevealId(batchId);
       setOpenBatchId(batchId);
       await load();
     } catch (err) {
@@ -492,13 +538,11 @@ export function Imports({ accounts, people, categories, onChange }) {
   // A card that's selected when a filter hides it shouldn't keep
   // showing its (now hidden) calendar — drop back to the "pick a card"
   // state instead of pointing at something the deck no longer shows.
-  useEffect(() => {
-    if (selectedAccountId !== null && !visibleAccountIds.has(selectedAccountId)) {
-      setSelectedAccountId(null);
-    }
-  }, [visibleAccountIds, selectedAccountId]);
-
-  useEffect(() => { setYearIdx(0); }, [selectedAccountId]);
+  // Worked out each render, not corrected by an effect after (D211).
+  const selectedAccountId = pickedAccountId !== null && visibleAccountIds.has(pickedAccountId) ? pickedAccountId : null;
+  // The year being looked at belongs to the card: another card starts on its latest year.
+  const yearIdx = yearPick.accountId === selectedAccountId ? yearPick.idx : 0;
+  const setYearIdx = (fn) => setYearPick({ accountId: selectedAccountId, idx: fn(yearIdx) });
 
   const selectedAccount = walletAccounts.find((a) => a.id === selectedAccountId) ?? null;
   const accountBatches = selectedAccountId === null ? [] : walletBatches.filter((b) => b.account_id === selectedAccountId);
@@ -519,10 +563,17 @@ export function Imports({ accounts, people, categories, onChange }) {
       batch={batch}
       label={statementLabel(batch)}
       isOpen={openBatchId === batch.id}
-      onToggleOpen={() => setOpenBatchId(openBatchId === batch.id ? null : batch.id)}
+      onToggleOpen={() => { setRevealId(null); setOpenBatchId(openBatchId === batch.id ? null : batch.id); }}
+      reveal={revealId === batch.id}
+      showReading={uploading === null /* an upload shows it in its own box */}
       onCloseModal={onCloseModal}
       parsingId={parsingId}
       onParse={(password) => parse(batch.id, batch.file_type, batch.parse_method, password)}
+      onReadWithClaude={() => {
+        if (window.confirm(`Read ${batch.original_filename} with Claude? Its transaction pages are sent to Anthropic, and it costs a few cents.`)) {
+          readWithClaude(batch.id);
+        }
+      }}
       onDelete={handleDelete}
       report={reports[batch.id]}
       categories={categories}
@@ -538,31 +589,22 @@ export function Imports({ accounts, people, categories, onChange }) {
         <PageTitle className="text-base font-medium text-ink" emoji="📥" tint="bg-vivid-amber/20">Statements</PageTitle>
       </div>
 
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row">
-        <UploadBox
-          title="Claude API"
-          caption="Any issuer · a few ¢ per PDF · CSV free"
-          icon={<CloudUploadIcon />}
-          accent="bg-ink/40"
-          accentText="text-ink"
-          fileRef={apiFileRef}
-          fileName={apiFileName}
-          onFileChosen={setApiFileName}
-          onUpload={() => upload(apiFileRef, 'api', setApiFileName)}
-          uploading={uploading === 'api'}
+      <div className="mb-6">
+        <DropZone
+          fileRef={fileRef}
+          fileName={fileName}
+          onFileChosen={setFileName}
+          onUpload={upload}
+          uploading={uploading !== null}
         />
-        <UploadBox
-          title="Local parsing"
-          caption={`Free, $0.00 · ${LOCAL_PARSER_ISSUERS.join(', ')}`}
-          icon={<ShieldCheckIcon />}
-          accent="bg-earn/60"
-          accentText="text-earn"
-          fileRef={localFileRef}
-          fileName={localFileName}
-          onFileChosen={setLocalFileName}
-          onUpload={() => upload(localFileRef, 'local', setLocalFileName)}
-          uploading={uploading === 'local'}
-        />
+        {claudeOffer && (
+          <ClaudeOffer
+            offer={claudeOffer}
+            busy={parsingId === claudeOffer.batchId}
+            onAccept={() => readWithClaude(claudeOffer.batchId)}
+            onDismiss={() => setClaudeOffer(null)}
+          />
+        )}
       </div>
       {error && <p className="mb-6 -mt-2 text-sm text-spend">{error}</p>}
 
@@ -632,8 +674,8 @@ export function Imports({ accounts, people, categories, onChange }) {
       )}
 
       {modalBatch && (
-        <div className="fixed inset-0 z-20 flex items-center justify-center bg-ink/30 p-4" onClick={() => setModalBatchId(null)}>
-          <div className="max-h-[85vh] w-full max-w-3xl overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-scrim fixed inset-0 z-20 flex items-center justify-center bg-ink/30 p-4" onClick={() => setModalBatchId(null)}>
+          <div className="max-h-[90vh] w-full max-w-6xl overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             {renderCard(modalBatch, { onCloseModal: () => setModalBatchId(null) })}
           </div>
         </div>

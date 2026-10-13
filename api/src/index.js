@@ -14,7 +14,8 @@ import express from 'express';
 import pinoHttp from 'pino-http';
 
 import { logger } from './logger.js';
-import { checkConnection, pool } from './db.js';
+import { checkConnection, pool, query } from './db.js';
+import { migrationFiles, migrationStatus } from './migrations.js';
 
 import { referenceRouter } from './routes/reference.js';
 import { accountsRouter } from './routes/accounts.js';
@@ -24,11 +25,14 @@ import { transactionsRouter } from './routes/transactions.js';
 import { summaryRouter } from './routes/summary.js';
 import { loansRouter } from './routes/loans.js';
 import { recurringRouter } from './routes/recurring.js';
-import { calendarRouter } from './routes/calendar.js';
 import { zelleRouter } from './routes/zelle.js';
 import { contactsRouter } from './routes/contacts.js';
 import { merchantIconsRouter } from './routes/merchant-icons.js';
 import { merchantReviewRouter } from './routes/merchant-review.js';
+import { transactionReviewRouter } from './routes/transaction-review.js';
+import { paymentMatchesRouter } from './routes/payment-matches.js';
+import { backupsRouter } from './routes/backups.js';
+import { scheduleBackups } from './backup.js';
 import { alertsRouter } from './routes/alerts.js';
 import { appSettingsRouter } from './routes/app-settings.js';
 
@@ -72,11 +76,13 @@ app.use('/api/transactions', transactionsRouter);
 app.use('/api/summary', summaryRouter);
 app.use('/api/loans', loansRouter);
 app.use('/api/recurring', recurringRouter);
-app.use('/api/calendar', calendarRouter);
 app.use('/api/zelle', zelleRouter);
 app.use('/api/contacts', contactsRouter);
 app.use('/api/merchant-icons', merchantIconsRouter);
 app.use('/api/merchant-review', merchantReviewRouter);
+app.use('/api/transaction-review', transactionReviewRouter);
+app.use('/api/payment-matches', paymentMatchesRouter);
+app.use('/api/backups', backupsRouter);
 app.use('/api/alerts', alertsRouter);
 app.use('/api/app-settings', appSettingsRouter);
 
@@ -110,7 +116,8 @@ app.use((req, res) => {
   res.status(404).json({ error: 'not found', path: req.path });
 });
 
-app.use((err, req, res, next) => {
+// Four parameters, or Express doesn't treat it as the error handler; _next is unused on purpose.
+app.use((err, req, res, _next) => {
   req.log.error({ err }, 'unhandled error');
   res.status(500).json({ error: 'internal server error' });
 });
@@ -129,9 +136,26 @@ async function start() {
     process.exit(1);
   }
 
+  // Code expects the schema the db/*.sql files describe (D204): refuse to
+  // run against one that's behind, rather than fail later on a missing column.
+  const { pending, changed, tracked } = await migrationStatus(query, await migrationFiles());
+  if (!tracked) {
+    logger.error('this database has no migration record: run `npm run migrate -- --baseline` once (built by hand) or `npm run migrate` (empty)');
+    process.exit(1);
+  }
+  if (pending.length > 0) {
+    logger.error({ pending: pending.map((f) => f.name) }, 'migrations pending: run `npm run migrate`');
+    process.exit(1);
+  }
+  for (const name of changed) logger.warn({ migration: name }, 'an applied migration was edited; put changes in a new file');
+
   const server = app.listen(PORT, () => {
     logger.info(`cashflow api listening on http://localhost:${PORT}`);
   });
+
+  // A daily copy of the database and the statement PDFs (D205). Off for a
+  // throwaway API, like the demo recorder's (D257).
+  if (process.env.BACKUP_SCHEDULE !== 'off') scheduleBackups();
 
   const shutdown = (signal) => {
     logger.info(`${signal} received, shutting down`);
@@ -146,4 +170,7 @@ async function start() {
   process.on('SIGTERM', () => shutdown('SIGTERM'));
 }
 
-start();
+// Started only when run as the server, so tests can import the app and
+// serve it on a throwaway port against a throwaway database (D209).
+export { app };
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) start();

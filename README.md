@@ -10,30 +10,49 @@ machine.
 app with an invented household, running in your browser. Nothing you do
 there is saved.
 
-![Overview in the Vivid design](guide/images/overview.png)
+![Overview in the Glass design](guide/images/overview.png)
 
 ## What it does
 
-- **Statements in, transactions out.** PDF or CSV, years of them. Bank of
-  America, Chase, American Express and Bilt PDFs are read locally; other
-  PDFs can use Claude (optional API key).
+- **Statements in, transactions out.** PDF or CSV, years of them. PDFs from
+  nine banks are read free on your own computer: Bank of America, Chase,
+  American Express, Bilt, Robinhood, Barclays, SoFi, Apple Card and Zolve.
+  Any other bank's PDF can be read by Claude, one file at a time, only when
+  you ask (optional API key).
 - **Review before anything is saved.** Parsed rows wait in a review queue
   with duplicate detection, and only what you approve reaches the ledger.
+- **It checks its own work.** Every saved row is re-checked against the
+  household's own history; the Review page says what looks wrong, why it
+  matters and what approving changes, with one-click fixes and Undo. Fix a
+  merchant once and later imports learn its name, type and category.
+- **Every statement adds up.** Each statement's rows are checked against its
+  printed opening and closing balances, to the cent, with a likely cause for
+  any gap.
+- **Every card payment traced** to the bank row it came from ("Paid by Chase
+  checking"), or a note saying which statement is missing.
+- **Where each purchase happened:** the town or "Online", read from the
+  bank's line and filled in from your other visits when a store prints only
+  a phone number. Each merchant has its own history card.
 - **Overview.** Income, spend, loans and savings for any month or the year so
   far, an activity chart, and a category breakdown.
-- **Cards.** Every account with its transactions and a statement calendar
-  that shows which months are uploaded, missing or not due yet.
-- **Recurring bills,** detected from your history and shown on a calendar —
-  paid, upcoming, or missed.
-- **Loans,** tracked by hand (a car loan, a 0% balance transfer) with
-  progress toward payoff.
+- **Cards.** Every account with its transactions, category totals and a
+  statement calendar of uploaded, missing or not-due months.
+- **Recurring bills,** found in your history, with countdowns and what was
+  paid, missed or due each month.
+- **Loans,** tracked by hand (a car loan, a 0% balance transfer with its
+  promo end date read off the statement) with progress toward payoff.
+- **Savings and investment balances** entered by hand, so money moved out of
+  your accounts is still accounted for.
 - **Zelle** payments sorted into sent, received and transfers between you.
 - **History.** Every edit is recorded, from → to.
+- **Daily backups** of the database and your statements to
+  `~/cashflow-backups`, newest 30 kept.
 - **Privacy mode** hides every amount with one click, for screenshots.
-- **Two designs:** a quiet ledger-paper *Classic* and a colourful, animated
-  *Vivid*.
+- **Three designs, light or dark:** a quiet ledger-paper *Classic*, a
+  colourful *Vivid*, and *Glass*, Apple-style, which the demo opens in.
+  Every page fits a phone.
 
-![Welcome page](guide/images/welcome.png)
+![The Glass welcome page](guide/images/welcome.png)
 
 ## Set it up
 
@@ -66,19 +85,20 @@ Ask the same thing. Codex reads `AGENTS.md` directly.
 
 ### By hand
 
-1. **Database** — create it and apply every migration in order:
+1. **Database** — create an empty one:
 
    ```sh
    createdb cashflow
-   for f in db/*.sql; do psql -v ON_ERROR_STOP=1 -d cashflow -f "$f"; done
    ```
 
-2. **API** (port 4000):
+2. **API** (port 4000) — `npm run migrate` builds the schema from `db/`, and
+   later applies only new migrations (the API won't start behind):
 
    ```sh
    cd api
    cp .env.example .env      # edit DATABASE_URL if your Postgres needs a user/password
    npm install
+   npm run migrate
    npm run dev
    ```
 
@@ -99,8 +119,9 @@ git-ignored.
 ### Optional: read any bank's PDFs with Claude
 
 Without an API key, CSV files and PDFs from **Bank of America, Chase,
-American Express and Bilt** are read entirely on your machine — free. For
-any other bank's PDF, cashflow can ask Claude to read the transaction pages:
+American Express, Bilt, Robinhood, Barclays, SoFi, Apple Card and Zolve** are
+read entirely on your machine — free. For any other bank's PDF, cashflow can
+ask Claude to read the transaction pages:
 
 1. Create an API key at **[console.anthropic.com](https://console.anthropic.com)**
    → API Keys (the account needs a little prepaid credit).
@@ -112,11 +133,12 @@ any other bank's PDF, cashflow can ask Claude to read the transaction pages:
 
 3. Restart the API (`Ctrl+C`, then `npm run dev` in `api/`) — it reads `.env`
    only at startup.
-4. On the **Import** page, upload through the **Claude API** box instead of
-   **Local parsing**. Only the pages with transactions or totals are sent
-   (terms and conditions are skipped locally), and cashflow asks you to
-   confirm before each statement since it costs money — typically a few cents.
-   Every parsed row still waits for your review before it's saved.
+4. On the **Import** page, drop the statement in as usual: it's always read
+   free first. When the free reader can't handle it, a **Read with Claude**
+   button appears for that one file — nothing is sent until you click it.
+   Only the pages with transactions or totals are sent (terms and conditions
+   are skipped locally), and it typically costs a few cents. Every parsed row
+   still waits for your review before it's saved.
 
 Only Claude (Anthropic) is supported today; OpenAI/GPT is not.
 
@@ -134,7 +156,10 @@ The GitHub Pages demo has no server. `api/demo/seed.mjs` creates an
 invented household in a separate `cashflow_demo` database,
 `api/demo/record.mjs` drives the real app in headless Chrome and saves every
 API response, and `npm run build:demo` builds a version of the web app that
-replays those responses. Rebuild all of it with:
+replays those responses. It opens in the Glass design with its intro, and its
+"today" is fixed at the household's last day (Sep 30, 2026), so it never
+lands on a month with no data. Search and filters work: the demo filters the
+recorded rows itself. Rebuild all of it with:
 
 ```sh
 sh api/demo/rebuild.sh     # needs Postgres and Google Chrome; never touches `cashflow`

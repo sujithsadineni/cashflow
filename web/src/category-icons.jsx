@@ -12,13 +12,12 @@
  * Settings), that always wins.
  */
 
+import { useDesign } from './use-design';
+import { GLASS_GLYPHS } from './glass-category-glyphs';
+
 const s = { stroke: 'currentColor', strokeWidth: 1.4, strokeLinecap: 'round', strokeLinejoin: 'round', fill: 'none' };
 
-export const ICON_CATALOG = [
-  'home', 'bolt', 'cart', 'fork', 'car', 'fuel', 'bag', 'heart', 'shield',
-  'refresh', 'star', 'tag', 'swap', 'card', 'tray-down', 'percent', 'bank',
-  'undo', 'piggy', 'plane', 'film', 'briefcase', 'trend-up', 'dot',
-];
+
 
 const PATHS = {
   home: <path d="M2.5 8L8 3l5.5 5M4 6.8V13h8V6.8" {...s} />,
@@ -143,47 +142,17 @@ const PATHS = {
 
 export function CategoryGlyph({ iconKey, size = 16 }) {
   const key = PATHS[iconKey] ? iconKey : 'dot';
+  // Glass (D246): the same key, drawn as Ionicons' filled glyph.
+  if (useDesign().design === 'glass') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 512 512" aria-hidden="true">
+        {GLASS_GLYPHS[key]}
+      </svg>
+    );
+  }
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden="true">
       {PATHS[key]}
     </svg>
   );
-}
-
-// Best-effort default so every category looks right with zero setup.
-// Matched on substrings of the lowercased name; order matters (first
-// match wins), most-specific patterns first.
-const DEFAULT_RULES = [
-  [/rent/, 'home'],
-  [/utilit|ev charg/, 'bolt'],
-  [/grocer|costco/, 'cart'],
-  [/din(e|ing)/, 'fork'],
-  [/transport/, 'car'],
-  [/fuel|gas/, 'fuel'],
-  [/shop/, 'bag'],
-  [/health/, 'heart'],
-  [/insurance/, 'shield'],
-  [/subscription/, 'refresh'],
-  [/annual fee/, 'star'],
-  [/cashback/, 'tag'],
-  [/transfer/, 'swap'],
-  [/card payment/, 'card'],
-  [/salary|cash deposit|deposit/, 'tray-down'],
-  [/interest/, 'percent'],
-  [/loan/, 'bank'],
-  [/zelle/, 'swap'],
-  [/refund/, 'undo'],
-  [/invest/, 'trend-up'],
-  [/saving/, 'piggy'],
-  [/travel/, 'plane'],
-  [/entertainment/, 'film'],
-  [/consulting|fee/, 'briefcase'],
-];
-
-export function defaultIconFor(name) {
-  const n = (name ?? '').toLowerCase();
-  for (const [pattern, key] of DEFAULT_RULES) {
-    if (pattern.test(n)) return key;
-  }
-  return 'dot';
 }

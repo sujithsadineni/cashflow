@@ -17,5 +17,15 @@ test('bilt is matched over its servicer "Cardless" when both appear', () => {
 });
 
 test('no known issuer mentioned returns null, not a false positive', () => {
-  assert.equal(guessIssuerFromPageOne('Robinhood Gold Card statement'), null);
+  assert.equal(guessIssuerFromPageOne('Fidelity Rewards Visa statement'), null);
+});
+
+test('Robinhood is known, but a statement from another bank that mentions it stays that bank', () => {
+  assert.equal(guessIssuerFromPageOne('Questions? Contact support via the Robinhood Banking app'), 'robinhood');
+  assert.equal(guessIssuerFromPageOne('Chase Total Checking\n12/26 Robinhood Debits 892655044'), 'chase');
+});
+
+test('Barclays is known, and a "Barclaycard" payment line elsewhere is not Barclays', () => {
+  assert.equal(guessIssuerFromPageOne('Download the Barclays US App for fast,'), 'barclays');
+  assert.equal(guessIssuerFromPageOne('Some Bank statement\nBARCLAYCARD US CREDITCARD 123'), null);
 });

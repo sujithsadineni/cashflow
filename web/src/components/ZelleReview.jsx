@@ -121,7 +121,7 @@ function PersonDetail({ contactId, name, rows, onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-30 flex items-center justify-center bg-ink/30 p-4"
+      className="modal-scrim fixed inset-0 z-30 flex items-center justify-center bg-ink/30 p-4"
       onClick={(e) => { e.stopPropagation(); onClose(); }}
     >
       <div

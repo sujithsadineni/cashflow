@@ -10,7 +10,7 @@ import { Button } from './Form';
  * Same modal shape as MerchantHistory — a drill-down popover, not a
  * page of its own.
  */
-export function MerchantReview({ onClose, onResolved }) {
+export function MerchantReview({ onClose, onResolved, embedded = false }) {
   const [items, setItems] = useState(null);
   const [error, setError] = useState(null);
   const [busyId, setBusyId] = useState(null);
@@ -36,31 +36,8 @@ export function MerchantReview({ onClose, onResolved }) {
     }
   };
 
-  return (
-    <div
-      className="fixed inset-0 z-20 flex items-center justify-center bg-ink/30 p-4"
-      onClick={onClose}
-    >
-      <div
-        className="max-h-[85vh] w-full max-w-xl overflow-y-auto rounded-lg border border-rule bg-raised p-5 shadow-lg"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h3 className="text-base font-medium text-ink">Merchant review</h3>
-            <p className="mt-0.5 text-xs text-muted">
-              Possible matches the auto-scan wasn't confident enough to apply on its own.
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            className="text-muted transition-colors hover:text-ink"
-          >
-            ✕
-          </button>
-        </div>
-
+  const body = (
+    <>
         {error && <p className="mb-3 text-sm text-spend">{error}</p>}
 
         {!items && !error && <p className="text-sm text-muted">Loading…</p>}
@@ -116,6 +93,38 @@ export function MerchantReview({ onClose, onResolved }) {
             ))}
           </ul>
         )}
+    </>
+  );
+
+  // Embedded: a tab inside the Transactions Review popup (D175), no overlay of its own.
+  if (embedded) return body;
+
+  return (
+    <div
+      className="modal-scrim fixed inset-0 z-20 flex items-center justify-center bg-ink/30 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="max-h-[85vh] w-full max-w-xl overflow-y-auto rounded-lg border border-rule bg-raised p-5 shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h3 className="text-base font-medium text-ink">Merchant review</h3>
+            <p className="mt-0.5 text-xs text-muted">
+              Possible matches the auto-scan wasn't confident enough to apply on its own.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="text-muted transition-colors hover:text-ink"
+          >
+            ✕
+          </button>
+        </div>
+
+        {body}
       </div>
     </div>
   );

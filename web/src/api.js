@@ -90,11 +90,14 @@ export const api = {
   people:     () => request('/people'),
   personCreate: (name) => post('/people', { name }),
   personRename: (id, name) => request(`/people/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
+  personNickname: (id, nickname) => request(`/people/${id}/nickname`, { method: 'PATCH', body: JSON.stringify({ nickname }) }),
   personAvatar: (id, avatar) => request(`/people/${id}/avatar`, { method: 'PATCH', body: JSON.stringify({ avatar }) }),
   categories: () => request('/categories'),
   activity:   (limit = 50, { area, before, entity } = {}) =>
     request(`/activity?${new URLSearchParams({ limit, ...(area && { area }), ...(before && { before }), ...(entity && { entity }) })}`),
   summary:    (month) => request(`/summary${month ? `?month=${month}` : ''}`),
+  savingsBreakdown: (month) => request(`/summary/savings-breakdown?month=${month}`),
+  recordBalance: (accountId, body) => post(`/accounts/${accountId}/balances`, body),
   alerts:     () => request('/alerts'),
   alertHistory: ({ month, year, ytd } = {}) => {
     const params = ytd ? `year=${year}&ytd=true` : `month=${month}`;
@@ -138,10 +141,14 @@ export const api = {
     // three minutes, not the default ten seconds. `password` is only
     // sent when the caller actually has one to try (a household-
     // encrypted PDF) — never persisted anywhere past this call.
-    parse:       (id, password) => request(`/imports/${id}/parse`, {
+    // `parseMethod: 'api'` switches a free-read PDF to Claude. Only ever
+    // sent after the person said yes to that file (D182).
+    parse:       (id, password, parseMethod) => request(`/imports/${id}/parse`, {
                    method: 'POST',
                    timeoutMs: 180_000,
-                   body: password ? JSON.stringify({ password }) : undefined,
+                   body: password || parseMethod
+                     ? JSON.stringify({ ...(password ? { password } : {}), ...(parseMethod ? { parse_method: parseMethod } : {}) })
+                     : undefined,
                  }),
     staged:      (id) => request(`/imports/${id}/staged`),
     updateStaged: (id, stagedId, changes) =>
@@ -150,6 +157,8 @@ export const api = {
                      body: JSON.stringify(changes),
                    }),
     approve:     (id, body) => post(`/imports/${id}/approve`, body),
+    // Re-read a stored PDF for rows its saved rows lack (D214) and misread balances (D215). dry: list only.
+    recover:     (id, { dry = false, balances = false } = {}) => post(`/imports/${id}/recover${dry ? '?dry=1' : balances ? '?balances=1' : ''}`),
     approveAnyway: (id, stagedId) => post(`/imports/${id}/staged/${stagedId}/approve-anyway`),
     remove:      (id) => request(`/imports/${id}`, { method: 'DELETE' }),
   },
@@ -163,6 +172,7 @@ export const api = {
       const qs = params.toString();
       return request(`/transactions${qs ? `?${qs}` : ''}`);
     },
+    categorySummary: (filters) => request(`/transactions/category-summary?${new URLSearchParams(Object.entries(filters).filter(([, v]) => v != null && v !== ''))}`),
     update: (id, changes) =>
       request(`/transactions/${id}`, { method: 'PATCH', body: JSON.stringify(changes) }),
     trends: (granularity, month) =>
@@ -201,25 +211,22 @@ export const api = {
     update:     (id, data) =>
                   request(`/loans/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     deactivate: (id) => post(`/loans/${id}/deactivate`),
+    // Cards carrying a balance transfer no loan tracks yet (D194).
+    suggestions:       () => request('/loans/suggestions'),
+    dismissSuggestion: (key) => post(`/loans/suggestions/${encodeURIComponent(key)}/dismiss`),
   },
 
   recurring: {
-    list:   (includeEnded = false) =>
-              request(`/recurring${includeEnded ? '?include_ended=true' : ''}`),
-    // A detect pass reads every spend transaction from the last two
-    // years and classifies each merchant group — noticeably slower
-    // than a normal list/create call.
-    detect: () => request('/recurring/detect', { method: 'POST', timeoutMs: 30_000 }),
-    dismissCandidate: (matchNameContains) => post('/recurring/candidates/dismiss', { match_name_contains: matchNameContains }),
-    create: (data) => post('/recurring', data),
-    update: (id, data) =>
-              request(`/recurring/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-    link:   (id, transactionId) => post(`/recurring/${id}/link`, { transaction_id: transactionId }),
-    unlink: (id, transactionId) => post(`/recurring/${id}/unlink`, { transaction_id: transactionId }),
-    transactions: (id) => request(`/recurring/${id}/transactions`),
+    list:        (includeEnded = false, month = null) =>
+                   request(`/recurring?${new URLSearchParams({ ...(includeEnded ? { include_ended: 'true' } : {}), ...(month ? { month } : {}) })}`),
+    // Reads two years of spending and looks for rhythms — slower than a list call.
+    suggestions: () => request('/recurring/suggestions', { timeoutMs: 30_000 }),
+    ignore:      (key) => post('/recurring/suggestions/ignore', { key }),
+    create:      (data) => post('/recurring', data),
+    update:      (id, data) => request(`/recurring/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    charges:     (id) => request(`/recurring/${id}/charges`),
+    unlink:      (id, transactionId) => post(`/recurring/${id}/unlink`, { transaction_id: transactionId }),
   },
-
-  calendar: (month) => request(`/calendar?month=${month}`),
 
   zelle: {
     list:   () => request('/zelle'),
@@ -241,6 +248,26 @@ export const api = {
     count:   () => request('/merchant-review/count'),
     approve: (id) => post(`/merchant-review/${id}/approve`),
     dismiss: (id) => post(`/merchant-review/${id}/dismiss`),
+  },
+  // Daily copies of the database and statement PDFs (D205).
+  backups: {
+    status: () => request('/backups'),
+    run:    () => post('/backups'),
+  },
+  // Where a card payment came from, set by hand (D200).
+  paymentMatches: {
+    set:   (transactionId, via, label) => post(`/payment-matches/${transactionId}`, label ? { via, label } : { via }),
+    clear: (transactionId) => request(`/payment-matches/${transactionId}/manual`, { method: 'DELETE' }),
+  },
+  transactionReview: {
+    list:    () => request('/transaction-review'),
+    count:   () => request('/transaction-review/count'),
+    run:     () => post('/transaction-review/run'),
+    approve: (id, value) => post(`/transaction-review/${id}/approve`, value ? { value } : {}),
+    dismiss: (id) => post(`/transaction-review/${id}/dismiss`),
+    // D249: many at once, all or nothing; and putting them back.
+    batch:   ({ approve = [], dismiss = [] }) => post('/transaction-review/batch', { approve, dismiss }),
+    undo:    (items) => post('/transaction-review/undo', { items }),
   },
   merchantIcons: {
     list:        () => request('/merchant-icons'),
@@ -309,6 +336,13 @@ export function formatMoney(cents, { showSign = false, compact = false } = {}) {
 const SHORT_MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /** 'YYYY-MM-DD' -> 'Jun 18' (or a masked placeholder in privacy mode). */
+/** "1,234.56" or "$1234.56" -> 123456; NaN when empty. The one place a typed amount becomes cents. */
+export function dollarsToCents(value) {
+  const cleaned = String(value).replace(/[^0-9.-]/g, '');
+  if (cleaned === '') return NaN;
+  return Math.round(parseFloat(cleaned) * 100);
+}
+
 export function formatShortDate(iso) {
   if (!iso) return '—';
   if (privacyMode) return '*** **';
@@ -343,10 +377,22 @@ export function maskName(name) {
   return placeholderNames.get(name);
 }
 
+/**
+ * A person, briefly, for tight places like the Transactions table (D237):
+ * their nickname, else their first name. Privacy mode shows the masked
+ * placeholder's first name and never the nickname, which could identify them.
+ */
+export function shortPersonName(name, nickname) {
+  if (!name) return name;
+  if (nickname && !privacyMode) return nickname;
+  return maskName(name).trim().split(/\s+/)[0];
+}
+
 export const ACCOUNT_TYPES = [
   { value: 'CREDIT_CARD', label: 'Credit card' },
   { value: 'CHECKING',    label: 'Checking' },
   { value: 'SAVINGS',     label: 'Savings' },
+  { value: 'INVESTMENT',  label: 'Investment' },
 ];
 
 export const typeLabel = (value) =>

@@ -60,8 +60,17 @@ upload ──► import_batch ──► parse ──► staged_transaction ─�
   recategorised transaction changes every view immediately. Spend is
   `amount_cents < 0` excluding payments/transfers; savings is income minus
   spend minus real loan payments.
-- **Recurring bills** (`recurring.js`) are detected from transaction history
-  and confirmed by a person; confirmed series link future matches.
+- **Re-checks** (`recheck.js`) compare every saved row with the household's
+  own history and rules; findings wait in `transaction_review` for a person
+  (Review page), which approves, changes or dismisses each one, with Undo.
+- **Payment matching** (`payment-match.js`) links each card payment to the
+  bank row that paid it (`payment_match`), or says why there isn't one.
+- **Places** (`place.js`) read where a purchase happened from its line, and
+  learn a town from the merchant's other rows.
+- **Recurring bills** (`bills.js`, `routes/recurring.js`) are found in
+  transaction history and added by a person; each bill links its charges.
+- **Backups** (`backup.js`): a daily `pg_dump` and a copy of the statements
+  to `BACKUP_DIR` (default `~/cashflow-backups`).
 - **Alerts** (`routes/alerts.js`) — overdue statements, missed or new
   recurring charges, rows awaiting review.
 - **Activity** (`routes/activity.js`) reads `audit_log`; edits store
@@ -79,19 +88,24 @@ upload ──► import_batch ──► parse ──► staged_transaction ─�
 | `statement` | per-account, per-period printed totals and cashback |
 | `category` | spending categories (with an optional icon) |
 | `loan` | manual loan balances, terms and deadlines |
-| `recurring_series` | confirmed recurring bills and their match rules |
+| `recurring_series` | recurring bills and their match rules |
+| `transaction_review` | re-check findings waiting for a person |
+| `payment_match` | which bank row paid each card payment |
+| `account_balance` | savings and investment balances entered by hand |
 | `contact` | Zelle counterparties |
 | `audit_log` | every write, with before/after values |
 
-Migrations in `db/` are plain SQL, numbered, applied in order. There's no
-migration runner: applying them to an empty database reproduces the schema.
+Migrations in `db/` are plain SQL, numbered, applied in order by
+`npm run migrate` (in `api/`), which records each one in `schema_migrations`.
+The API refuses to start while one is pending, and warns if an applied file
+was edited.
 
 ## Web app
 
 - `web/src/api.js` is the only place that calls `fetch` and the only place
   that divides cents by 100 (`formatMoney`).
-- `web/src/design-context.jsx` switches between Classic and Vivid; Vivid-only
-  code checks `useDesign()`.
+- `web/src/design-context.jsx` switches between Classic, Vivid and Glass,
+  and light or dark; design-only code checks `useDesign()`.
 - Reusable pieces live in `components/ui/` (`DataTable`, `DetailDialog`,
   `PersonAvatar`); forms in `components/Form.jsx`.
 - `web/src/demo.js` replaces the API with recorded responses in the GitHub

@@ -152,3 +152,19 @@ test('reconciliation matches the printed section totals against the summed rows'
   assert.equal(r.reconciliation.payments_match, true);
   assert.equal(r.reconciliation.charges_match, true);
 });
+
+// D214: two genuine identical charges (Spectrum $50 twice on 12/31) vs. pdf.js printing one line twice.
+const withCharges = (lines) => buildPages().map((p) => (p.pageNumber === 3
+  ? { ...p, text: p.text.replace('AplPay FOOD LION #0123   ANYTOWN   NC  03/28/26   $126.48\nGROCERY STORE\n', lines) }
+  : p));
+const spectrum = (r) => r.rows.filter((row) => row.description.startsWith('SPECTRUM'));
+
+test('two identical charges with a line between them are both kept', () => {
+  const r = extractAmexLocally(withCharges('SPECTRUM   855-707-7328   MO  03/28/26   $50.00\nCABLE SVC\nSPECTRUM   855-707-7328   MO 03/28/26   $50.00\nCABLE SVC\n'), CLASSIFICATIONS, noCleanup);
+  assert.deepEqual(spectrum(r).map((row) => row.amount_cents), [-5000, -5000]);
+});
+
+test('the same line printed twice in a row is a rendering artifact, dropped', () => {
+  const r = extractAmexLocally(withCharges('SPECTRUM   855-707-7328   MO  03/28/26   $50.00\nSPECTRUM   855-707-7328   MO 03/28/26   $50.00\nCABLE SVC\n'), CLASSIFICATIONS, noCleanup);
+  assert.equal(spectrum(r).length, 1);
+});

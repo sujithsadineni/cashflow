@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { countsAsSpend, spendCents } from './spend.js';
+import { countsAsSpend, spendCents, spendSql, incomeSql } from './spend.js';
 
 test('purchases, fees and interest charged are spend; card payments, transfers and savings are not', () => {
   assert.equal(countsAsSpend({ amount_cents: -5000, txn_type: 'purchase' }), true);
@@ -29,4 +29,13 @@ test('the card-bill case: a purchase and the payment of it count once, not twice
 test('never positive, like summary.js: a refund-only day is zero spend, not income', () => {
   assert.equal(spendCents([{ amount_cents: 4500, txn_type: 'refund' }]), 0);
   assert.equal(spendCents([]), 0);
+});
+
+test('the SQL form is the same rule — pinned, so an edit to one form without the other fails here', () => {
+  assert.equal(
+    spendSql('t'),
+    "((t.amount_cents < 0 AND COALESCE(t.txn_type,'') NOT IN ('payment','transfer','savings')) OR t.txn_type = 'refund')",
+  );
+  assert.equal(spendSql(''), "((amount_cents < 0 AND COALESCE(txn_type,'') NOT IN ('payment','transfer','savings')) OR txn_type = 'refund')");
+  assert.equal(incomeSql('t'), "t.txn_type = 'deposit'");
 });
