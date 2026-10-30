@@ -10,7 +10,11 @@ import { audit } from '../../core/audit.js';
 import { validate, accountConfirmSchema } from '../../core/validate.js';
 import { randomCardColor } from '../../money/card-palette.js';
 import { isKnownBank } from '../../merchants/known-banks.js';
-import { upsertStatement, relocateStatementFile } from './shared.js';
+import { upsertStatement, relocateStatementFile, REPO_ROOT } from './shared.js';
+import { parseStatementCsv, BANK_TYPES } from '../../parse/csv.js';
+import { inflowType } from '../../review/inflow-type.js';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 
 const router = Router();
 export { router as accountRouter };
@@ -82,11 +86,23 @@ router.post('/:id/account', validate(accountConfirmSchema), async (req, res, nex
       accountMask = rows[0].mask;
     }
 
+    // A CSV read before its account was known (a new install's first upload)
+    // guessed its signs from its words; the account now says (see csv.js).
+    const csvRows = batch.file_type === 'CSV' && batch.status === 'NEEDS_ACCOUNT'
+      ? await csvRowsFor(batch, accountId)
+      : [];
+
     await withTransaction(async (client) => {
       await client.query(
         `UPDATE import_batch SET account_id = $2, status = 'REVIEW' WHERE id = $1`,
         [id, accountId]
       );
+      for (const row of csvRows) {
+        await client.query(
+          'UPDATE staged_transaction SET amount_cents = $2, txn_type = $3 WHERE id = $1',
+          [row.id, row.amount_cents, row.txn_type]
+        );
+      }
       const summary = batch.detected_summary;
       if (summary?.period_start && summary?.period_end) {
         await upsertStatement(client, accountId, id, summary);
@@ -104,7 +120,7 @@ router.post('/:id/account', validate(accountConfirmSchema), async (req, res, nex
       action: 'import.account_confirmed',
       entityType: 'import_batch',
       entityId: id,
-      detail: { account_id: accountId, created: Boolean(create) },
+      detail: { account_id: accountId, created: Boolean(create), ...(csvRows.length && { csv_rows_resigned: csvRows.length }) },
     });
 
     res.json({ id, status: 'REVIEW', account_id: accountId });
@@ -113,3 +129,33 @@ router.post('/:id/account', validate(accountConfirmSchema), async (req, res, nex
   }
 });
 
+/**
+ * A CSV's staged rows, signed and typed for the account it now belongs to:
+ * a bank account's file is never flipped, and money in is a deposit there,
+ * a refund or reward on a card. Only rows that change are returned. Types a
+ * rule set (Zelle, Bilt, transfers) are kept unless the row's sign changed.
+ */
+async function csvRowsFor(batch, accountId) {
+  const { rows: owner } = await query('SELECT account_type FROM account WHERE id = $1', [accountId]);
+  const bank = BANK_TYPES.has(owner[0]?.account_type);
+  let flippedAtRead = false;
+  try {
+    flippedAtRead = parseStatementCsv((await readFile(path.resolve(REPO_ROOT, batch.stored_path))).toString('utf8')).flipped;
+  } catch { /* the file moved or is unreadable: leave the signs as read */ }
+  const unflip = bank && flippedAtRead;
+  const { rows } = await query(
+    'SELECT id, amount_cents, txn_type, description FROM staged_transaction WHERE import_batch_id = $1',
+    [batch.id]
+  );
+  const changed = [];
+  for (const r of rows) {
+    const amount = unflip ? -r.amount_cents : r.amount_cents;
+    const guessed = !r.txn_type || ['purchase', 'refund', 'cashback', 'deposit'].includes(r.txn_type);
+    let type = r.txn_type;
+    if (amount && (guessed && (unflip || !r.txn_type))) {
+      type = amount < 0 ? 'purchase' : bank ? 'deposit' : inflowType(r.description);
+    }
+    if (amount !== r.amount_cents || type !== r.txn_type) changed.push({ id: r.id, amount_cents: amount, txn_type: type });
+  }
+  return changed;
+}

@@ -1,5 +1,7 @@
 # Dependencies
 node_modules/
+# Vite 8 keeps its dependency cache beside the app (web/.vite/)
+.vite/
 
 # Secrets — .env.example is the only env file that belongs in git
 .env

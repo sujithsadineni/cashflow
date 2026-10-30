@@ -196,7 +196,10 @@ export function sniffHeader(cells) {
  * review screen can show it to a human instead of silently dropping
  * it. Only a file we can't map at all is an error.
  */
-export function parseStatementCsv(text) {
+/** Account types whose exports already sign money our way (out negative). */
+export const BANK_TYPES = new Set(['CHECKING', 'SAVINGS']);
+
+export function parseStatementCsv(text, { bankAccount = false } = {}) {
   const records = parseCsvRecords(text);
   if (records.length < 2) {
     return { ok: false, error: 'File has no data rows' };
@@ -276,8 +279,9 @@ export function parseStatementCsv(text) {
   // "PAYMENT - THANK YOU" / "PAYMENT RECEIVED", printed negative; a bank
   // export never words its card payment that way. Debit/credit columns
   // already say which way each row went, so only a signed amount column
-  // can need this.
-  const flipped = hasAmount && issuerSigned(rows);
+  // can need this. A file already known to be a bank account's is never
+  // flipped: its own card-payment line can read "THANK YOU" too.
+  const flipped = hasAmount && !bankAccount && issuerSigned(rows);
   if (flipped) {
     for (const row of rows) {
       if (row.amount_cents) row.amount_cents = -row.amount_cents;

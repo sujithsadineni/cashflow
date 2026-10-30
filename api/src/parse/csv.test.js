@@ -175,6 +175,16 @@ test('file: a bank export paying a card is not flipped', () => {
   assert.deepEqual(result.rows.map((r) => r.amount_cents), [120000, -22887]);
 });
 
+test('file: a bank account\'s export is never flipped, even with a "THANK YOU" line', () => {
+  const text = 'Date,Description,Amount\n' +
+    '01/03/2026,PAYROLL,1200.00\n' +
+    '01/09/2026,SAMPLE CARD ONLINE PAYMENT THANK YOU,-228.87\n';
+  assert.equal(parseStatementCsv(text).flipped, true, 'unknown account: read as a card export');
+  const result = parseStatementCsv(text, { bankAccount: true });
+  assert.equal(result.flipped, false);
+  assert.deepEqual(result.rows.map((r) => r.amount_cents), [120000, -22887]);
+});
+
 test('file: separate debit/credit columns normalise to our sign convention', () => {
   const result = parseStatementCsv(
     'Transaction Date,Payee,Debit,Credit\n' +

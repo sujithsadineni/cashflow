@@ -16,6 +16,7 @@ import { LineButton, LineReview } from './LineReview';
 import { StatementReveal, SectionLine } from './StatementReveal';
 import { StatementNotes, NOTES_BOX } from './StatementNotes';
 import { statementNotes } from '../../lib/imports/statement-notes';
+import { holderName } from '../../lib/imports/holder-name';
 import { aprText } from '../../lib/cards/utilisation';
 import { useHeight } from '../../hooks/use-height';
 import { printedOrder, printedSections, sectionFigures } from '../../lib/imports/printed-order';
@@ -38,6 +39,8 @@ function announceApproval(notify, result) {
   // Every open view of transactions, loans and statements reloads (D211).
   invalidate('transactions', 'loans', 'imports');
 }
+
+const NEW_PERSON = 'new';
 
 /**
  * The account confirmation card — step one of review. The parser
@@ -62,13 +65,19 @@ function AccountCard({ batch, accounts, people, onConfirmed, pickOther = false }
     const holder = batch.detected_holder?.toLowerCase();
     return holder ? people.find((p) => holder.includes(p.name.split(' ')[0].toLowerCase())) : null;
   })();
+  // Nobody in People yet (a new install), or a holder nobody matches: the owner
+  // can be added right here, named as the statement prints them.
   const [form, setForm] = useState({
-    person_id: String(holderMatch?.id ?? people[0]?.id ?? ''),
+    person_id: String(holderMatch?.id ?? people[0]?.id ?? NEW_PERSON),
+    new_person: holderName(batch.detected_holder),
     name: batch.detected_account_name ?? '',
     issuer: batch.detected_issuer ?? '',
-    account_type: batch.detected_account_type ?? 'CREDIT_CARD',
+    // A CSV says nothing about what it came from: the person picks, rather than a
+    // silent "Credit card" that reads a bank file's money the wrong way round.
+    account_type: batch.detected_account_type ?? (batch.file_type === 'CSV' ? '' : 'CREDIT_CARD'),
     mask: batch.detected_mask ?? '',
   });
+  const addingPerson = form.person_id === NEW_PERSON;
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -94,6 +103,23 @@ function AccountCard({ batch, accounts, people, onConfirmed, pickOther = false }
   };
 
   const set = (key) => (e) => setForm({ ...form, [key]: e.target.value });
+
+  const create = async () => {
+    const { new_person, ...fields } = form;
+    let personId = Number(form.person_id);
+    if (addingPerson) {
+      setBusy(true);
+      setError(null);
+      try {
+        personId = (await api.personCreate(new_person.trim().replace(/\s+/g, ' '))).id;
+        invalidate('reference');
+      } catch (err) {
+        setBusy(false);
+        return setError(err.message);
+      }
+    }
+    await confirm({ create: { ...fields, person_id: personId } });
+  };
 
   return (
     <div className="mt-4 rounded-lg border border-warn/40 bg-raised p-5">
@@ -164,12 +190,21 @@ function AccountCard({ batch, accounts, people, onConfirmed, pickOther = false }
               <Select
                 value={form.person_id}
                 onChange={set('person_id')}
-                options={personChoices(people)}
+                options={[...personChoices(people), { ...blankChoice('Someone new…'), value: NEW_PERSON }]}
               />
             </Field>
             <Field label="Type">
-              <Select value={form.account_type} onChange={set('account_type')} options={ACCOUNT_TYPE_CHOICES} />
+              <Select
+                value={form.account_type}
+                onChange={set('account_type')}
+                options={form.account_type ? ACCOUNT_TYPE_CHOICES : [blankChoice('Pick one…'), ...ACCOUNT_TYPE_CHOICES]}
+              />
             </Field>
+            {addingPerson && (
+              <Field label="Their name" hint="Added to People with this account">
+                <TextInput value={form.new_person} onChange={set('new_person')} placeholder="Alex Morgan" />
+              </Field>
+            )}
             <Field label="Name">
               <TextInput value={form.name} onChange={set('name')} placeholder="Customized Cash Rewards" />
             </Field>
@@ -182,8 +217,8 @@ function AccountCard({ batch, accounts, people, onConfirmed, pickOther = false }
           </div>
           <div className="mt-4 flex items-center gap-2">
             <Button
-              onClick={() => confirm({ create: { ...form, person_id: Number(form.person_id) } })}
-              disabled={busy || !form.name.trim()}
+              onClick={create}
+              disabled={busy || !form.name.trim() || !form.account_type || (addingPerson && !form.new_person.trim())}
             >
               {busy ? 'Creating…' : 'Create & attach'}
             </Button>

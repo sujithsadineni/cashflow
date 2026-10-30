@@ -12,7 +12,7 @@ import { Router } from 'express';
 
 import { query, withTransaction } from '../../core/db.js';
 import { audit } from '../../core/audit.js';
-import { parseStatementCsv } from '../../parse/csv.js';
+import { parseStatementCsv, BANK_TYPES } from '../../parse/csv.js';
 import { extractStatementFromPdf } from '../../parse/pdf.js';
 import { extractStatementFromPdfLocally } from '../../parse/pdf-local.js';
 import { enrichRows } from '../../parse/categorize.js';
@@ -109,9 +109,16 @@ router.post('/:id/parse', async (req, res, next) => {
     const categoryNames = categoryRows.map((c) => c.name);
 
     let parsed;
+    let csvKind = null; // 'bank' or 'card' once the CSV's account (or its signs) says which
     try {
       if (batch.file_type === 'CSV') {
-        parsed = parseStatementCsv(fileContents.toString('utf8'));
+        // Uploaded onto a known bank account: its signs are already ours (see csv.js).
+        const { rows: owner } = batch.account_id
+          ? await query('SELECT account_type FROM account WHERE id = $1', [batch.account_id])
+          : { rows: [] };
+        csvKind = owner[0] ? (BANK_TYPES.has(owner[0].account_type) ? 'bank' : 'card') : null;
+        parsed = parseStatementCsv(fileContents.toString('utf8'), { bankAccount: csvKind === 'bank' });
+        if (parsed.ok && parsed.flipped) csvKind = 'card';
         // CSVs carry no account header. Claude's merchant/type/category
         // pass runs only for a CSV the person chose to send to Claude
         // (D182): a free upload stays free, and the history-based passes
@@ -174,6 +181,18 @@ router.post('/:id/parse', async (req, res, next) => {
       });
       // A bank the free reader doesn't know stops at Find the card; the rest while reading (D325).
       return res.status(422).json({ error: parsed.error, stage: parsed.stage ?? 'read' });
+    }
+
+    // A free CSV read names no row's type (only Claude's pass did): read it off the
+    // sign, money out a purchase, money in a deposit on a bank account and a refund
+    // or reward on a card (unknown until the account is). Every rule below can
+    // still say otherwise.
+    if (batch.file_type === 'CSV') {
+      for (const row of parsed.rows) {
+        if (row.txn_type || !row.amount_cents) continue;
+        if (row.amount_cents < 0) row.txn_type = 'purchase';
+        else if (csvKind) row.txn_type = csvKind === 'bank' ? 'deposit' : inflowType(row.description);
+      }
     }
 
     // A known, unambiguous pattern (Bilt's rent-via-card mechanic)

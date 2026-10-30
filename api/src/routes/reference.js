@@ -21,6 +21,15 @@ referenceRouter.get('/people', async (req, res, next) => {
   }
 });
 
+/** Two people with one name can't be told apart anywhere the app shows them. */
+async function nameTaken(name, exceptId = null) {
+  const { rows } = await query(
+    'SELECT 1 FROM person WHERE lower(trim(name)) = lower(trim($1)) AND id IS DISTINCT FROM $2',
+    [name, exceptId]
+  );
+  return rows.length > 0;
+}
+
 /**
  * Adding a person — the bootstrap path now that there's no signup
  * flow to create the first one. Same shared household ledger either
@@ -30,6 +39,7 @@ referenceRouter.get('/people', async (req, res, next) => {
 referenceRouter.post('/people', validate(personUpdateSchema), async (req, res, next) => {
   try {
     const { name } = req.body;
+    if (await nameTaken(name)) return res.status(409).json({ error: 'Someone with that name is already here', field: 'name' });
     const { rows } = await query('INSERT INTO person (name) VALUES ($1) RETURNING id, name', [name]);
 
     await audit({ action: 'person.created', entityType: 'person', entityId: rows[0].id, detail: { name } });
@@ -50,6 +60,7 @@ referenceRouter.patch('/people/:id', validate(personUpdateSchema), async (req, r
   try {
     const id = Number(req.params.id);
     const { name } = req.body;
+    if (await nameTaken(name, id)) return res.status(409).json({ error: 'Someone with that name is already here', field: 'name' });
 
     const { rows } = await query(
       'UPDATE person SET name = $1 WHERE id = $2 RETURNING id, name',

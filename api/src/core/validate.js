@@ -68,7 +68,7 @@ export const accountConfirmSchema = z
     account_id: z.coerce.number().int().positive().optional(),
     create: z
       .object({
-        person_id: z.coerce.number().int().positive(),
+        person_id: z.coerce.number({ message: 'Pick whose account it is' }).int().positive('Pick whose account it is'),
         name: z.string().trim().min(1, 'Name is required').max(60),
         issuer: z.string().trim().max(60).optional().or(z.literal('')),
         account_type: z.enum(['CREDIT_CARD', 'CHECKING', 'SAVINGS', 'INVESTMENT']),
