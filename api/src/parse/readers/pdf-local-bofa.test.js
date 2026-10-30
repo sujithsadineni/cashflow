@@ -238,3 +238,12 @@ Total other subtractions   -$200.00`;
   assert.equal(r.reconciliation.subtractions_match, true);
   assert.equal(r.reconciliation.balances_reconcile, true);
 });
+
+test('a BofA statement names its product for the account it creates (D406)', async () => {
+  const { bofaCardProduct, bofaBankProduct } = await import('./pdf-local-bofa.js');
+  assert.equal(bofaCardProduct([{ text: 'Visa Signature®\nAccount # 4111' }, { text: '2.62 Category Bonus Earned' }]), 'Visa Signature', 'only what page one prints');
+  assert.equal(bofaCardProduct([{ text: 'Visa Signature®\nAccount # 4111' }, { text: '.00 Base Cash Back Earned' }]), 'Visa Signature');
+  assert.equal(bofaCardProduct([{ text: 'nothing here' }]), null);
+  assert.equal(bofaBankProduct('Your Adv SafeBalance Banking\nBofA Rewards Member'), 'Adv SafeBalance Banking');
+  assert.equal(bofaBankProduct('It is a privilege to support your banking needs.'), null);
+});

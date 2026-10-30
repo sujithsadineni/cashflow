@@ -95,6 +95,26 @@ function extractHolderName(pageOneText) {
   return null;
 }
 
+const linesOf = (text) => (text ?? '').split('\n').map((l) => l.trim().replace(/\s+/g, ' ')).filter(Boolean);
+
+/**
+ * The card's product as the account's name (D406), as page one prints it ("Visa Signature"):
+ * matching stays on the last 4, but an account created from a statement shouldn't read "Bank
+ * of America Card". Only what's printed: the product's own name is artwork on these statements,
+ * and nothing in the text tells one Visa Signature card from another (a category-bonus line
+ * looked like Customized Cash Rewards, but a card the household calls Visa Signature prints one too).
+ */
+export function bofaCardProduct(pages) {
+  const tier = linesOf(pages[0]?.text).find((l) => /^(Visa Signature|Visa Platinum|Platinum Visa|World Mastercard|Travel Rewards|Premium Rewards|Unlimited Cash Rewards|Customized Cash Rewards)\b/i.test(l));
+  return tier ? tier.replace(/[®™]/g, '').trim() : null;
+}
+
+/** A bank account's product, as page one prints it: "Your Adv SafeBalance Banking" → "Adv SafeBalance Banking". */
+export function bofaBankProduct(pageOneText) {
+  const line = linesOf(pageOneText).find((l) => /^Your .+ (Banking|Checking|Savings)$/i.test(l));
+  return line ? line.replace(/^Your /i, '').replace(/[®™]/g, '').trim() : null;
+}
+
 function extractMask(pageOneText) {
   const m = pageOneText.match(/Account#\s*([\d\s]{16,19})/);
   if (!m) return null;
@@ -401,7 +421,8 @@ function extractBofaCreditCardLocally(pages, classifications, cleanMerchantName)
 
   return {
     account: {
-      name: null, // the statement's own product name isn't authoritative for matching; mask is
+      // Shown as the account's name; matching never uses it, the mask decides (D406).
+      name: bofaCardProduct(pages),
       issuer: 'Bank of America',
       mask,
       account_type: 'CREDIT_CARD',
@@ -644,7 +665,7 @@ function extractBofaCheckingLocally(pages, classifications, cleanMerchantName) {
 
   return {
     account: {
-      name: null,
+      name: bofaBankProduct(pageOne),
       issuer: 'Bank of America',
       mask,
       account_type: 'CHECKING',

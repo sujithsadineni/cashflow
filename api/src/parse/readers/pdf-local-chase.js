@@ -239,7 +239,8 @@ export function extractChaseLocally(pages, classifications, cleanMerchantName) {
 
   return {
     account: {
-      name: null,
+      // "Chase Total Checking", as page one prints it: the account's name, never its match (D406).
+      name: (pageOne.split('\n').map((l) => l.trim().replace(/\s+/g, ' ')).find((l) => /^Chase .+ (Checking|Savings|Banking)$/i.test(l)) ?? null),
       issuer: 'Chase',
       mask,
       account_type: 'CHECKING',
