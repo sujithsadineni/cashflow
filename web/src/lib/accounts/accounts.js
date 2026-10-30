@@ -104,6 +104,8 @@ export const formOf = (a) => ({
   due_day: a.due_day == null ? '' : String(a.due_day),
   // A limit set by hand for a card whose statements print none (D354), in dollars as typed.
   credit_limit_manual: centsToInput(a.credit_limit_manual_cents),
+  // The card's payment network set by hand (D416); '' is automatic, its product's.
+  network: a.network ?? '',
   status: a.is_active === false ? 'closed' : 'active',
 });
 
@@ -136,6 +138,7 @@ export function changesOf(before, after) {
   // Blank clears it (D354).
   const limitOf = (f) => (f.credit_limit_manual ?? '').trim();
   if (limitOf(after) !== limitOf(before)) out.credit_limit_manual_cents = limitOf(after) === '' ? null : dollarsToCents(limitOf(after));
+  if ((after.network ?? '') !== (before.network ?? '')) out.network = after.network || null;
   if (after.status !== before.status) out.is_active = after.status === 'active';
   return out;
 }

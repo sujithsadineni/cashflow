@@ -141,3 +141,10 @@ test('a return printed three times nets to the return; a waived fee is a fee (D3
   assert.deepEqual(classify('credits', 'Bill Payment from Bank of America'), { txn_type: 'payment', category: 'Card Payment' });
   assert.deepEqual(classify('charges', 'SHELL OIL 123'), { txn_type: 'purchase', category: null });
 });
+
+test('layout B: the holder under the plan line, in either case (D414)', () => {
+  const p1 = LAYOUT_B_P1.replace(' ALEX MORGAN   - Card Ending in - * 2222', 'Zolve Physical Credit APR V1\n Alex Morgan   - Card Ending in - * 2222');
+  const r = extractZolveLocally(pages(p1, LAYOUT_B_P2), [], noCleanup);
+  assert.equal(r.account.holder_name, 'Alex Morgan');
+  assert.equal(r.account.mask, '2222');
+});

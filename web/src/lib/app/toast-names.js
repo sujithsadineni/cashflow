@@ -40,6 +40,7 @@ export const TOASTS = {
   'txn.source': t('saved', 'Payment source saved', 'Got it, source saved', '🧾', 'Transactions', 'Paid back by a person'),
   'account.saved': t('saved', 'Account saved', 'Account all set', '🏦', 'Settings → Accounts', 'Freedom Unlimited ···1234'),
   'account.balance': t('saved', 'Balance saved', 'Balance noted', '💰', 'Settings → Accounts, Overview', 'Savings ···5678'),
+  'account.merged': t('saved', 'Accounts merged', 'Two cards, one account', '🔗', 'Settings → Accounts', 'Cash Rewards ···5207 is now part of ···5208'),
   'account.members': t('saved', 'Card holders changed', 'Card holders updated', '👥', 'Settings → Accounts', 'Added as an authorised user', UNDO),
   'loan.saved': t('saved', 'Loan saved', 'Loan all set', '📝', 'Settings → Loans', 'Car loan'),
   'loan.owed': t('saved', 'Amount owed saved', 'Amount owed noted', '📉', 'Settings → Loans', 'Car loan'),

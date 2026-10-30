@@ -15,10 +15,12 @@ import { query, withTransaction } from '../core/db.js';
 import { audit } from '../core/audit.js';
 import { extractStatementFromPdfLocally } from '../parse/pdf-local.js';
 import { missingRows } from './missing-rows.js';
+// Where stored statements are, as Import itself resolves them (STATEMENTS_DIR), D410.
+import { REPO_ROOT } from '../routes/imports/shared.js';
 import { suggestHistoricalCategories } from '../review/historical-category.js';
 import { keywordCategory } from '../parse/categories/keyword-category.js';
 
-const REPO_ROOT = path.resolve(import.meta.dirname, '../../..');
+
 
 /**
  * Also compares the balances (D215): a statement whose rows are all

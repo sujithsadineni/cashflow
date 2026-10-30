@@ -15,6 +15,7 @@ import { upsertStatement, relocateStatementFile, REPO_ROOT } from './shared.js';
 import { parseStatementCsv, BANK_TYPES } from '../../parse/csv.js';
 import { inflowType } from '../../review/inflow-type.js';
 import { readFile } from 'node:fs/promises';
+import { fillNicknames } from '../../statements/nicknames-run.js';
 import path from 'node:path';
 
 const router = Router();
@@ -180,6 +181,7 @@ router.post('/:id/account', validate(accountConfirmSchema), async (req, res, nex
       detail: { account_id: accountId, created: Boolean(create), ...(csvRows.length && { csv_rows_resigned: csvRows.length }) },
     });
 
+    if (create) await fillNicknames(); // a new account's automatic nickname (D416)
     res.json({ id, status: 'REVIEW', account_id: accountId, new_people: newPeople });
   } catch (err) {
     next(err);

@@ -8,13 +8,14 @@
 
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { query } from '../core/db.js';
 import { audit } from '../core/audit.js';
-import { extractPdfPages } from '../parse/pdf-pages.js';
+import { pagesOf } from './pdf-passwords.js';
+// Where stored statements are, as Import itself resolves them (STATEMENTS_DIR), D410.
+import { REPO_ROOT } from '../routes/imports/shared.js';
 import { memberSince } from './member-since.js';
 
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+
 
 /** @returns 'updated' | 'unchanged' | 'not_found' | 'no_pdf' */
 export async function readMemberSince(batchId) {
@@ -25,7 +26,7 @@ export async function readMemberSince(batchId) {
     [batchId]
   );
   if (!s) return 'no_pdf';
-  const pages = await extractPdfPages(await readFile(path.resolve(REPO_ROOT, s.stored_path)), process.env.PDF_PASSWORD);
+  const pages = await pagesOf(await readFile(path.resolve(REPO_ROOT, s.stored_path)));
   const found = memberSince(pages[0]?.text ?? '');
   if (!found) return 'not_found';
   if (found === s.member_since) return 'unchanged';

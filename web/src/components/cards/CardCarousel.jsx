@@ -155,6 +155,8 @@ export function CardFace({ account }) {
   // A known card product drawn in its own colours (D403), on the same terms: a photo or a colour you chose wins.
   const product = credit && !hasImage && !account.color ? cardProductFor(account) : null;
   const ink = product?.light ? DARK_INK : LIGHT_INK;
+  // The network set by hand wins over the product's (D416); a card with no known product can have one too.
+  const network = credit ? account.network ?? product?.network ?? cardProductFor(account)?.network ?? null : null;
 
   const background = hasImage
     ? {
@@ -226,7 +228,7 @@ export function CardFace({ account }) {
                 {credit ? 'Credit card' : account.account_type === 'SAVINGS' ? 'Savings account' : 'Checking account'}
               </div>
             </div>
-            {product && <div className="shrink-0"><NetworkMark network={product.network} light={product.light} /></div>}
+            {network && <div className="shrink-0"><NetworkMark network={network} light={product?.light} /></div>}
           </div>
         </>
       )}

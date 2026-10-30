@@ -14,16 +14,18 @@ import { loadCardDates } from '../statements/card-dates-run.js';
 
 import { Router } from 'express';
 import multer from 'multer';
-import { query } from '../core/db.js';
+import { query, withTransaction } from '../core/db.js';
 import { audit } from '../core/audit.js';
 import { changesBetween } from '../core/changes.js';
-import { validate, accountCreateSchema, accountUpdateSchema, accountBalanceSchema, cardArtSchema } from '../core/validate.js';
+import { validate, accountCreateSchema, accountUpdateSchema, accountBalanceSchema, cardArtSchema, accountMergeSchema } from '../core/validate.js';
 import { randomCardColor } from '../money/card-palette.js';
 import { isKnownBank } from '../merchants/known-banks.js';
 import { cardProductFor, cardArtFor } from '../../../web/src/lib/cards/card-products.js';
 import { MAX_IMAGE_BYTES, isValidImage } from '../core/uploads.js';
 import { spendSql } from '../money/spend.js';
 import { cardHistory } from '../statements/card-history.js';
+import { mergeSuggestions } from '../statements/account-match.js';
+import { fillNicknames } from '../statements/nicknames-run.js';
 import { readFile } from 'node:fs/promises';
 import { isLocked, findSavedPassword } from '../statements/pdf-passwords.js';
 import { REPO_ROOT } from './imports/shared.js';
@@ -39,6 +41,43 @@ const IMAGES_DIR = process.env.ACCOUNT_IMAGES_DIR || path.resolve(
   '../../../data/account-images'
 );
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_IMAGE_BYTES } });
+
+/** Every active account with its statements' periods and balances, for continuity (D411). */
+async function accountsWithStatements(client = { query }) {
+  const { rows } = await client.query(
+    `SELECT a.id, a.name, a.mask, a.issuer, a.account_type, a.holder_name,
+            COALESCE(json_agg(json_build_object('period_start', s.period_start, 'period_end', s.period_end,
+              'opening_balance_cents', s.opening_balance_cents, 'closing_balance_cents', s.closing_balance_cents))
+              FILTER (WHERE s.id IS NOT NULL), '[]') AS statements
+       FROM account a LEFT JOIN statement s ON s.account_id = a.id
+      WHERE a.is_active GROUP BY a.id`
+  );
+  return rows;
+}
+
+/**
+ * Accounts that look like one card under two numbers (D411): a reissue or an upgrade imported
+ * as a second account before the app could tell. Settings → Accounts offers each as a merge.
+ */
+accountsRouter.get('/merge-suggestions', async (req, res, next) => {
+  try {
+    const accounts = await accountsWithStatements();
+    const byId = new Map(accounts.map((a) => [a.id, a]));
+    const brief = (a) => ({ id: a.id, name: a.name, mask: a.mask });
+    res.json(mergeSuggestions(accounts).map(({ from, into }) => ({ from: brief(byId.get(from)), into: brief(byId.get(into)) })));
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** Automatic nicknames for accounts without one the person set (D416). */
+accountsRouter.post('/auto-nicknames', async (req, res, next) => {
+  try {
+    res.json({ changed: await fillNicknames() });
+  } catch (err) {
+    next(err);
+  }
+});
 
 /* ------------------------------------------------------------------
    List
@@ -64,7 +103,7 @@ accountsRouter.get('/', async (req, res, next) => {
      * row; the join counts everything in a single pass.
      */
     const { rows } = await query(
-      `SELECT a.id, a.name, a.nickname, a.issuer, a.account_type, a.mask, a.credit_limit_manual_cents,
+      `SELECT a.id, a.name, a.nickname, a.issuer, a.account_type, a.mask, a.credit_limit_manual_cents, a.network,
               a.color, a.image_path, a.holder_name, a.closing_day, a.due_day, a.cashback_rate_bps,
               a.is_active, a.created_at,
               p.id AS person_id, p.name AS person_name,
@@ -89,7 +128,7 @@ accountsRouter.get('/', async (req, res, next) => {
             ORDER BY s.period_end DESC LIMIT 1
          ) sb ON true
         ${includeClosed ? '' : 'WHERE a.is_active = true'}
-        GROUP BY a.id, a.name, a.nickname, a.issuer, a.account_type, a.mask, a.credit_limit_manual_cents,
+        GROUP BY a.id, a.name, a.nickname, a.issuer, a.account_type, a.mask, a.credit_limit_manual_cents, a.network,
                  a.color, a.image_path, a.holder_name, a.closing_day, a.due_day, a.is_active, a.created_at, p.id, p.name,
                  mb.balance_cents, mb.as_of, sb.balance_cents, sb.as_of
         ORDER BY (a.account_type = 'CREDIT_CARD'), p.id, a.name`
@@ -383,6 +422,7 @@ accountsRouter.post('/', validate(accountCreateSchema), async (req, res, next) =
 
     // 201 Created, not 200. The status code is part of the API's
     // meaning: it tells the client a new resource now exists.
+    await fillNicknames(); // its automatic nickname (D416)
     res.status(201).json(account);
   } catch (err) {
     next(err);
@@ -417,7 +457,9 @@ accountsRouter.patch('/:id', validate(accountUpdateSchema), async (req, res, nex
       if (person.length === 0) return res.status(400).json({ error: 'No such person', field: 'person_id' });
     }
 
-    const allowed = ['name', 'issuer', 'mask', 'is_active', 'color', 'person_id', 'account_type', 'holder_name', 'closing_day', 'due_day', 'cashback_rate_bps', 'nickname', 'credit_limit_manual_cents'];
+    const allowed = ['name', 'issuer', 'mask', 'is_active', 'color', 'person_id', 'account_type', 'holder_name', 'closing_day', 'due_day', 'cashback_rate_bps', 'nickname', 'credit_limit_manual_cents', 'network', 'nickname_auto'];
+    // A nickname the person sets is theirs: automatic nicknames never replace it (D416).
+    if (Object.prototype.hasOwnProperty.call(req.body, 'nickname')) req.body.nickname_auto = false;
     const sets = [];
     const values = [];
 
@@ -457,6 +499,52 @@ accountsRouter.patch('/:id', validate(accountUpdateSchema), async (req, res, nex
 /* ------------------------------------------------------------------
    Deactivate
    ------------------------------------------------------------------ */
+
+/**
+ * One card under two accounts, made one (D411): everything the older account holds (its imports,
+ * statements, transactions, bills, balances, members, rewards, loans pointing at it) moves to the
+ * account it continues as, and the older one is deactivated, never deleted. Its card numbers stay
+ * on its statements, so they're the account's card history and match its next statements. Where
+ * both accounts hold the same unique thing (a balance on one date, a person, a cycle's answer) the
+ * surviving account's is kept. One transaction, one audit entry with what moved.
+ */
+accountsRouter.post('/:id/merge', validate(accountMergeSchema), async (req, res, next) => {
+  try {
+    const from = Number(req.params.id);
+    const { into } = req.body;
+    if (from === into) return res.status(400).json({ error: 'Pick another account to merge into', field: 'into' });
+    const { rows: both } = await query('SELECT id, name, mask, is_active FROM account WHERE id = ANY($1)', [[from, into]]);
+    if (both.length !== 2 || both.some((a) => !a.is_active)) return res.status(404).json({ error: 'Both accounts must exist and be active' });
+    const moved = await withTransaction(async (client) => {
+      const counts = {};
+      const move = async (table, column = 'account_id') => {
+        const r = await client.query(`UPDATE ${table} SET ${column} = $2 WHERE ${column} = $1`, [from, into]);
+        counts[`${table}.${column}`] = r.rowCount;
+      };
+      // Unique per account: only what the surviving account doesn't already have moves.
+      const moveUnique = async (table, key) => {
+        const r = await client.query(
+          `UPDATE ${table} t SET account_id = $2 WHERE t.account_id = $1
+             AND NOT EXISTS (SELECT 1 FROM ${table} u WHERE u.account_id = $2 AND u.${key} = t.${key})`, [from, into]);
+        counts[table] = r.rowCount;
+      };
+      for (const table of ['import_batch', 'statement', 'transaction', 'recurring_series', 'reward_redemption']) await move(table);
+      await move('import_batch', 'suggested_account_id');
+      await move('loan', 'linked_account_id');
+      await move('loan', 'payment_account_id');
+      await moveUnique('account_balance', 'as_of');
+      await moveUnique('account_member', 'person_id');
+      await moveUnique('statement_gap_answer', 'cycle_end');
+      await client.query('UPDATE account SET is_active = false WHERE id = $1', [from]);
+      await audit({ client, action: 'account.merged', entityType: 'account', entityId: into, detail: { from, into, moved: counts } });
+      return counts;
+    });
+    await fillNicknames(); // one fewer twin: nicknames may lose their last 4 (D416)
+    res.json({ from, into, moved });
+  } catch (err) {
+    next(err);
+  }
+});
 
 /**
  * There is no DELETE here, deliberately.

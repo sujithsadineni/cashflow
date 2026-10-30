@@ -8,8 +8,8 @@ import { maskName } from '../../api';
 import { useDesign } from '../../hooks/use-design';
 
 // Each design draws the network its own way (D406): Classic in one tone (the card's own type
-// colour, no new bright colour), Glass and Vivid in the networks' colours, Glass on a frosted pill
-// like its floating controls, Vivid larger. Simple shapes, no network artwork.
+// colour, no new bright colour), Glass and Vivid in the networks' colours, Vivid larger; always
+// straight on the card, never on a backdrop (D414). Simple shapes, no network artwork.
 
 function Mastercard({ tone, scale }) {
   const w = 46 * scale;
@@ -33,21 +33,23 @@ function Mastercard({ tone, scale }) {
 
 function Visa({ tone, light, scale }) {
   return (
-    <svg width={56 * scale} height={22 * scale} viewBox="0 0 56 22" aria-hidden="true">
-      <text x="28" y="18" textAnchor="middle" fontFamily="Arial Black, Arial, sans-serif" fontWeight="900" fontStyle="italic"
-        fontSize="20" letterSpacing="0.5" fill={tone ? 'currentColor' : light ? '#1A1F71' : '#fff'}>VISA</text>
+    <svg width={58 * scale} height={20 * scale} viewBox="0 0 58 20" aria-hidden="true">
+      <text x="29" y="17.5" textAnchor="middle" fontFamily="Arial Black, Arial, sans-serif" fontWeight="900" fontStyle="italic"
+        fontSize="21" letterSpacing="-0.5" fill={tone ? 'currentColor' : light ? '#1434CB' : '#fff'}>VISA</text>
     </svg>
   );
 }
 
+// American Express's "blue box": the two words stacked in white on its blue.
 function Amex({ tone, scale }) {
+  const word = { textAnchor: 'middle', fontFamily: 'Arial Narrow, Arial, sans-serif', fontWeight: 900, fontSize: 8.6, letterSpacing: 0.2, fill: tone ? 'currentColor' : '#fff' };
   return (
-    <svg width={46 * scale} height={30 * scale} viewBox="0 0 46 30" aria-hidden="true">
+    <svg width={44 * scale} height={30 * scale} viewBox="0 0 44 30" aria-hidden="true">
       {tone
-        ? <rect x="1" y="1" width="44" height="28" rx="4" fill="none" stroke="currentColor" strokeWidth="1.6" />
-        : <rect x="0" y="0" width="46" height="30" rx="4" fill="#2E77BB" />}
-      <text x="23" y="19.5" textAnchor="middle" fontFamily="Arial Black, Arial, sans-serif" fontWeight="900" fontSize="11.5" letterSpacing="0.6"
-        fill={tone ? 'currentColor' : '#fff'}>AMEX</text>
+        ? <rect x="1" y="1" width="42" height="28" rx="3" fill="none" stroke="currentColor" strokeWidth="1.5" />
+        : <rect x="0" y="0" width="44" height="30" rx="3" fill="#016FD0" />}
+      <text x="22" y="13.6" {...word}>AMERICAN</text>
+      <text x="22" y="23.2" {...word}>EXPRESS</text>
     </svg>
   );
 }
@@ -73,10 +75,8 @@ export function NetworkMark({ network, light = false }) {
   const scale = design === 'vivid' ? 1.15 : 1;
   const props = { tone, light, scale };
   const mark = { VISA: <Visa {...props} />, MASTERCARD: <Mastercard {...props} />, AMEX: <Amex {...props} />, DISCOVER: <Discover {...props} /> }[network?.toUpperCase()];
-  if (!mark) return null;
-  return design === 'glass'
-    ? <span role="img" aria-label={network} className={`inline-flex rounded-lg px-1.5 py-1 backdrop-blur-md ${light ? 'bg-white/45' : 'bg-white/15'}`}>{mark}</span>
-    : <span role="img" aria-label={network} className="inline-flex">{mark}</span>;
+  // On the card itself in every design: no backdrop behind it (the owner's ask).
+  return mark ? <span role="img" aria-label={network} className="inline-flex">{mark}</span> : null;
 }
 
 export function ContactlessIcon({ size = 22 }) {

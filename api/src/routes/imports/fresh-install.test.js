@@ -129,3 +129,64 @@ test('a known card can wear its picture from the app\'s card art, like an upload
   assert.equal((await query(`SELECT detail->>'card_art' AS art FROM audit_log WHERE action = 'account.image_updated' AND entity_id = $1`, [card.id])).rows[0].art, 'apple-card');
   assert.equal((await send('POST', `/accounts/${card.id}/card-art`, { key: 'no-such-card' })).status, 400);
 });
+
+test('Approve all skips a line already saved from an overlapping statement instead of refusing (D410)', { skip }, async () => {
+  const { rows: [acct] } = await query(`SELECT id FROM account WHERE account_type = 'CHECKING' LIMIT 1`);
+  const first = await (await upload('overlap-a.csv', 'Date,Description,Amount\n11/02/2026,SAMPLE GROCER 12,-42.00\n11/05/2026,SAMPLE FUEL,-30.00\n', acct.id)).json();
+  await send('POST', `/imports/${first.id}/parse`);
+  assert.equal((await send('POST', `/imports/${first.id}/approve`, { all: true })).status, 200);
+  const second = await (await upload('overlap-b.csv', 'Date,Description,Amount\n11/05/2026,SAMPLE FUEL,-30.00\n11/09/2026,SAMPLE CAFE,-6.00\n', acct.id)).json();
+  await send('POST', `/imports/${second.id}/parse`);
+  const res = await send('POST', `/imports/${second.id}/approve`, { all: true });
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.deepEqual([body.rows_approved, body.skipped_already_saved], [1, 1]);
+  assert.equal((await query(`SELECT count(*)::int AS n FROM transaction WHERE description = 'SAMPLE FUEL'`)).rows[0].n, 1, 'saved once');
+});
+
+test('a reissued card imported as two accounts is suggested for a merge, and the merge moves everything (D411)', { skip }, async () => {
+  const owner = (await query(`SELECT id FROM person WHERE name = 'Sam Sample'`)).rows[0];
+  const mk = async (mask) => (await query(
+    `INSERT INTO account (person_id, name, issuer, account_type, mask, holder_name) VALUES ($1, 'Merge Card', 'Merge Bank', 'CREDIT_CARD', $2, 'SAM SAMPLE') RETURNING id`, [owner.id, mask])).rows[0].id;
+  const oldId = await mk('1201');
+  const newId = await mk('1202');
+  const statementOn = async (account, start, end, open, close) => {
+    const b = (await query(`INSERT INTO import_batch (original_filename, stored_path, file_type, file_hash, status, account_id, parse_method)
+      VALUES ('m.pdf', 'data/m.pdf', 'PDF', md5(random()::text), 'APPROVED', $1, 'local') RETURNING id`, [account])).rows[0].id;
+    await query(`INSERT INTO statement (account_id, import_batch_id, period_start, period_end, opening_balance_cents, closing_balance_cents)
+      VALUES ($1, $2, $3, $4, $5, $6)`, [account, b, start, end, open, close]);
+    await query(`INSERT INTO transaction (account_id, import_batch_id, posted_date, description, amount_cents, txn_type, dedupe_hash)
+      VALUES ($1, $2, $3, 'MERGE SHOP', -500, 'purchase', md5(random()::text))`, [account, b, start]);
+  };
+  await statementOn(oldId, '2031-01-01', '2031-01-31', 0, 70000);
+  await statementOn(newId, '2031-02-01', '2031-02-28', 70000, 1200);
+
+  const suggestions = await (await fetch(`${base}/accounts/merge-suggestions`)).json();
+  assert.ok(suggestions.some((s) => s.from.id === oldId && s.into.id === newId), 'the reissue is offered as a merge');
+  const res = await send('POST', `/accounts/${oldId}/merge`, { into: newId });
+  assert.equal(res.status, 200);
+  assert.equal((await query('SELECT count(*)::int AS n FROM transaction WHERE account_id = $1', [newId])).rows[0].n, 2);
+  assert.equal((await query('SELECT count(*)::int AS n FROM statement WHERE account_id = $1', [newId])).rows[0].n, 2);
+  assert.equal((await query('SELECT is_active FROM account WHERE id = $1', [oldId])).rows[0].is_active, false, 'deactivated, never deleted');
+  assert.equal((await query(`SELECT count(*)::int AS n FROM audit_log WHERE action = 'account.merged' AND entity_id = $1`, [newId])).rows[0].n, 1);
+});
+
+test('naming a section for someone already on the card (or taken off) fills them in instead of refusing (D415)', { skip }, async () => {
+  const owner = (await query(`SELECT id FROM person WHERE name = 'Sam Sample'`)).rows[0];
+  const other = (await query(`INSERT INTO person (name) VALUES ('Kit Sample') RETURNING id`)).rows[0];
+  const card = (await query(`INSERT INTO account (person_id, name, issuer, account_type, mask) VALUES ($1, 'Member Card', 'Sample Bank', 'CREDIT_CARD', '5501') RETURNING id`, [owner.id])).rows[0].id;
+  // Added before their section printed, then taken off again.
+  const added = await (await send('POST', `/accounts/${card}/members`, { person_id: other.id, role: 'additional' })).json();
+  await send('PATCH', `/accounts/${card}/members/${added.member_id}`, { is_active: false });
+  // Their section's name and card ending, picked for them.
+  const res = await send('POST', `/accounts/${card}/members`, { person_id: other.id, role: 'additional', printed_name: 'K SAMPLE', card_ending: '7701' });
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  const row = (await query('SELECT printed_name, card_ending, is_active, role FROM account_member WHERE id = $1', [added.member_id])).rows[0];
+  assert.deepEqual([row.printed_name, row.card_ending, row.is_active, row.role], ['K SAMPLE', '7701', true, 'additional']);
+  assert.equal((await send('POST', `/accounts/${card}/members`, { person_id: other.id, role: 'additional', printed_name: 'K SAMPLE' })).status, 409, 'nothing new: still a repeat');
+  // Undo puts the row back exactly as it was.
+  assert.equal((await send('POST', `/accounts/${card}/members/undo/${body.audit_id}`)).status, 200);
+  const back = (await query('SELECT printed_name, card_ending, is_active, role FROM account_member WHERE id = $1', [added.member_id])).rows[0];
+  assert.deepEqual([back.printed_name, back.card_ending, back.is_active, back.role], [null, null, false, 'additional']);
+});

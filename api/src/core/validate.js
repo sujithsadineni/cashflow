@@ -149,6 +149,8 @@ export const accountUpdateSchema = z.object({
   credit_limit_manual_cents: z.coerce.number().int().min(1).max(100_000_000_00).nullable().optional(),
   // A short name for tight places (D353); '' clears it back to the full name.
   nickname: z.string().trim().max(24, 'Keep it to 24 characters').optional().or(z.literal('')),
+  // A card's payment network, set by hand (D416); null is automatic (its product's).
+  network: z.enum(['VISA', 'MASTERCARD', 'AMEX', 'DISCOVER']).nullable().optional(),
   issuer: z.string().trim().max(60).optional().or(z.literal('')),
   mask: z.string().trim().regex(/^\d{4}$/).optional().or(z.literal('')),
   is_active: z.boolean().optional(),
@@ -512,3 +514,6 @@ export const alertSnoozeSchema = z.object({
 
 /** Picking a card's picture from the app's card art (D407): the product's key. */
 export const cardArtSchema = z.object({ key: z.string().trim().min(1).max(40) }).strict();
+
+/** Merging one account into another it continues as (D411). */
+export const accountMergeSchema = z.object({ into: z.coerce.number().int().positive() }).strict();

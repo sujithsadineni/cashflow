@@ -525,7 +525,8 @@ const CHECKING_STOP_PHRASES = [/^Braille and Large Print Request/i];
 
 // Ignored outright, section untouched — a column-header repeat or page
 // footer, never a signal that the current section has ended.
-const CHECKING_IGNORE_PATTERNS = [/^Date\s+Description\s+Amount$/i, /^Page \d+ of \d+$/i];
+// Column headers: "Date Description Amount", and the fees table's "Date Transaction description Amount" (D410).
+const CHECKING_IGNORE_PATTERNS = [/^Date\s+(Transaction\s+)?Description\s+Amount$/i, /^Page \d+ of \d+$/i];
 
 // A real TOTAL line — this section's rows are done. Distinct from the
 // ignore patterns above: this line means "the section that was just

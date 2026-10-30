@@ -9,6 +9,7 @@ import { useConfirm } from '../../../hooks/use-confirm';
 import { useDesign } from '../../../hooks/use-design';
 import { useWide } from '../../../hooks/use-wide';
 import { AccountList } from './AccountList';
+import { MergeSuggestions } from './MergeSuggestions';
 import { AccountDetail } from './AccountDetail';
 import { AccountFilterBar } from '../../ui/AccountFilters';
 import { PaneActionSlot } from '../pane-action';
@@ -147,6 +148,7 @@ export function Accounts({ accounts, people, onChange }) {
         {addButton}
       </div>
     )}
+    <MergeSuggestions onMerged={refresh} />
     <div className="apple-pane lg:grid lg:grid-cols-[22rem_minmax(0,1fr)] lg:items-start lg:gap-10">
       <nav aria-label="Accounts" className={detailOpen ? 'hidden lg:block' : ''}>
         <AccountList

@@ -27,7 +27,7 @@ import { keywordCategory, certainCategory } from '../../parse/categories/keyword
 import { inflowType } from '../../review/inflow-type.js';
 import { balanceTransferDepositFor } from '../../parse/categories/balance-transfer-deposit.js';
 import { findVerification, VERIFICATION_CATEGORY } from '../../matching/verification.js';
-import { pickAccountForCard, pickAccountByName } from '../../statements/account-match.js';
+import { pickAccountForCard, pickAccountByName, pickAccountByContinuity } from '../../statements/account-match.js';
 import { upsertStatement, relocateStatementFile, REPO_ROOT, duplicateMatchSql, findSameStatement } from './shared.js';
 import { stageOfThrow, readingFacts } from '../../statements/reading-stages.js';
 
@@ -361,6 +361,7 @@ router.post('/:id/parse', async (req, res, next) => {
     }
     let suggestedAccountId = null;
     let maskTied = false;
+    let maskTiedIds = new Set();
 
     if (batch.account_id == null && detectedAccount) {
       if (detectedAccount.mask) {
@@ -378,15 +379,33 @@ router.post('/:id/parse', async (req, res, next) => {
         );
         suggestedAccountId = pickAccountForCard(byMask, detectedAccount);
         maskTied = byMask.length > 0 && suggestedAccountId === null;
+        maskTiedIds = new Set(byMask.map((a) => a.id));
       }
       // A last 4 that more than one account has had and nothing settled:
       // the name alone mustn't pick one of them (or a third) either.
       if (suggestedAccountId === null && !maskTied && detectedAccount.name) {
         const { rows: byName } = await query(
-          'SELECT id, mask FROM account WHERE lower(name) = lower($1)',
+          'SELECT id, mask, holder_name FROM account WHERE lower(name) = lower($1)',
           [detectedAccount.name]
         );
         suggestedAccountId = pickAccountByName(byName, detectedAccount);
+      }
+      // Still none, or a last 4 several accounts share: the account this statement continues,
+      // by the balance carried over from its previous statement (D411). A reissue, an upgrade,
+      // a statement that prints no holder.
+      if (suggestedAccountId === null && parsed.statement?.period_start) {
+        const { rows: candidates } = await query(
+          `SELECT a.id, a.issuer, a.account_type, a.holder_name,
+                  COALESCE(json_agg(json_build_object('period_start', s.period_start, 'period_end', s.period_end,
+                    'opening_balance_cents', s.opening_balance_cents, 'closing_balance_cents', s.closing_balance_cents))
+                    FILTER (WHERE s.id IS NOT NULL), '[]') AS statements
+             FROM account a LEFT JOIN statement s ON s.account_id = a.id
+            WHERE a.is_active GROUP BY a.id`
+        );
+        const pool = maskTied ? candidates.filter((c) => maskTiedIds.has(c.id)) : candidates;
+        suggestedAccountId = pickAccountByContinuity(pool, {
+          ...parsed.statement, issuer: detectedAccount.issuer, account_type: detectedAccount.account_type, holder: detectedAccount.holder_name,
+        });
       }
     }
 
@@ -394,7 +413,7 @@ router.post('/:id/parse', async (req, res, next) => {
     // The statement keeps the card it was printed with (D275): an account's
     // former numbers and products are read off its statements.
     const summary = parsed.statement
-      ? { ...parsed.statement, card_mask: detectedAccount?.mask ?? null, product_name: detectedAccount?.product ?? null }
+      ? { ...parsed.statement, card_mask: detectedAccount?.mask ?? null, product_name: detectedAccount?.product ?? detectedAccount?.name ?? null }
       : null;
 
     // Inserting the rows, the detection results and the status flip

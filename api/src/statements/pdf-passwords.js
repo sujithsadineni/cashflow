@@ -70,3 +70,16 @@ export async function forgetPassword(id) {
   if (rows[0]) await audit({ action: 'pdf_password.forgotten', entityType: 'pdf_password', entityId: id, detail: { label: rows[0].label } });
   return rows.length > 0;
 }
+
+/**
+ * A stored statement's pages, opened the way Import opens it (D410): with PDF_PASSWORD when it's
+ * set, else a remembered password when the file is locked. The readers that run after approval
+ * (address, member since, missing rows) opened only with PDF_PASSWORD, so a locked statement
+ * (every Zolve one) was skipped without a word.
+ */
+export async function pagesOf(buffer) {
+  const { extractPdfPages } = await import('../parse/pdf-pages.js');
+  const password = process.env.PDF_PASSWORD
+    ?? ((await isLocked(buffer).catch(() => false)) ? await findSavedPassword(buffer, { count: false }) : undefined);
+  return extractPdfPages(buffer, password ?? undefined);
+}

@@ -112,7 +112,11 @@ export function extractZolveLocally(pages, classifications, cleanMerchantName) {
     period = { period_start: `${m[3]}-${pad(MONTHS[m[1].toLowerCase()])}-${pad(m[2])}`, period_end: `${m[6]}-${pad(MONTHS[m[4].toLowerCase()])}-${pad(m[5])}` };
   }
   const mask = text.match(/(?:ending in [•*\s]*|Ending in -?\s?\*\s?)(\d{4})/i)?.[1] ?? null;
-  const holder = (layoutB ? lines[0].match(/^([A-Z][A-Z .'-]+?)\s+-?\s*Card Ending/)?.[1] : lines[0].match(/^([A-Z][A-Z .'-]+)$/)?.[1]) ?? null;
+  // The older layout opens with its plan ("Zolve Physical Credit APR V1") and prints the holder, in
+  // either case, on the "NAME - Card Ending in - *1234" line below it (D414); the newer opens with the name.
+  const holder = (layoutB
+    ? lines.slice(0, 4).map((l) => l.match(/^([A-Za-z][A-Za-z .'-]+?)\s+-?\s*Card Ending/i)?.[1]).find(Boolean)
+    : lines[0].match(/^([A-Z][A-Z .'-]+)$/)?.[1]) ?? null;
 
   const opening = summary(text, 'Previous Balance');
   const closing = summary(text, 'New Balance');

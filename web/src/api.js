@@ -135,6 +135,9 @@ export const api = {
     update:     (id, data) =>
                   request(`/accounts/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     deactivate: (id) => post(`/accounts/${id}/deactivate`),
+    // One card under two accounts (D411): what looks like it, and making it one.
+    mergeSuggestions: () => request('/accounts/merge-suggestions'),
+    merge: (from, into) => post(`/accounts/${from}/merge`, { into }),
     setColor:   (id, color) =>
                   request(`/accounts/${id}`, { method: 'PATCH', body: JSON.stringify({ color }) }),
     uploadImage: (id, file) => {

@@ -12,13 +12,14 @@
 
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { query } from '../core/db.js';
 import { audit } from '../core/audit.js';
-import { extractPdfPages } from '../parse/pdf-pages.js';
+import { pagesOf } from './pdf-passwords.js';
+// Where stored statements are, as Import itself resolves them (STATEMENTS_DIR), D410.
+import { REPO_ROOT } from '../routes/imports/shared.js';
 import { mailingAddress, addressLine } from './mailing-address.js';
 
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+
 
 /** @returns 'updated' | 'unchanged' | 'not_found' | 'no_pdf' */
 export async function learnMailingAddress(accountId) {
@@ -34,7 +35,7 @@ export async function learnMailingAddress(accountId) {
   );
   if (!a?.pdf) return 'no_pdf';
   if (a.as_of && a.as_of >= a.period_end) return 'unchanged';
-  const pages = await extractPdfPages(await readFile(path.resolve(REPO_ROOT, a.pdf)), process.env.PDF_PASSWORD);
+  const pages = await pagesOf(await readFile(path.resolve(REPO_ROOT, a.pdf)));
   const found = mailingAddress(pages[0]?.text ?? '', [a.holder_name, a.person_name, ...(a.detected ?? [])]);
   if (!found) return 'not_found';
   const line = addressLine(found);
@@ -66,7 +67,7 @@ export async function readStatementAddress(batchId) {
     [batchId]
   );
   if (!s) return 'no_pdf';
-  const pages = await extractPdfPages(await readFile(path.resolve(REPO_ROOT, s.stored_path)), process.env.PDF_PASSWORD);
+  const pages = await pagesOf(await readFile(path.resolve(REPO_ROOT, s.stored_path)));
   const found = mailingAddress(pages[0]?.text ?? '', await holderNames(s.account_id));
   if (!found) return 'not_found';
   const line = addressLine(found);

@@ -18,6 +18,8 @@ import { rematchTransfers } from '../../matching/transfer-match-run.js';
 import { learnCardDays } from '../../statements/card-dates-run.js';
 import { learnMailingAddress, readStatementAddress } from '../../statements/mailing-address-run.js';
 import { readMemberSince } from '../../statements/member-since-run.js';
+import { learnCurrentCard } from '../../statements/current-card.js';
+import { fillNicknames } from '../../statements/nicknames-run.js';
 import { matchNewTransactions, getSuggestions } from '../recurring.js';
 import { flagOrFixMerchants } from '../../review/merchant-review.js';
 import { fileSpenders } from '../../statements/spender-run.js';
@@ -137,12 +139,34 @@ router.post('/:id/approve', validate(approveSchema), async (req, res, next) => {
     // What approving found, for the success toasts (D317).
     let billsLinked = [];
     let approvedIds = [];
+    let skippedSaved = 0;
     try {
       approvedCount = await withTransaction(async (client) => {
         const insertedIds = [];
         const hashes = await dedupeHashes(client, batch);
 
-        for (const row of staged) {
+        // Approve all (D410): a line already saved as a transaction (the same purchase printed on
+        // an overlapping statement) is skipped, the way Review leaves it unticked, instead of the
+        // whole statement being refused. Approving chosen lines still refuses one, since it was picked.
+        let toInsert = staged;
+        if (all) {
+          const { rows: saved } = await client.query(
+            'SELECT dedupe_hash FROM transaction WHERE dedupe_hash = ANY($1)', [staged.map((r) => hashes.get(r.id))]);
+          const savedHashes = new Set(saved.map((s) => s.dedupe_hash));
+          const already = staged.filter((r) => savedHashes.has(hashes.get(r.id)));
+          // Every line already saved is the same statement again: that's still refused, below.
+          if (already.length > 0 && already.length < staged.length) {
+            await client.query(`UPDATE staged_transaction SET review_status = 'REJECTED' WHERE id = ANY($1)`, [already.map((r) => r.id)]);
+            await audit({
+              client, action: 'staged_transaction.skipped', entityType: 'import_batch', entityId: id,
+              detail: { reason: 'already_saved', staged_ids: already.map((r) => r.id) },
+            });
+            skippedSaved = already.length;
+            toInsert = staged.filter((r) => !savedHashes.has(hashes.get(r.id)));
+          }
+        }
+
+        for (const row of toInsert) {
           failing = row;
           const dedupeHash = hashes.get(row.id);
 
@@ -225,7 +249,7 @@ router.post('/:id/approve', validate(approveSchema), async (req, res, next) => {
         billsLinked = await matchNewTransactions(insertedIds, client);
         approvedIds = insertedIds;
 
-        return staged.length;
+        return toInsert.length;
       });
     } catch (err) {
       // The dedupe constraint fired: one of these rows already exists
@@ -261,7 +285,7 @@ router.post('/:id/approve', validate(approveSchema), async (req, res, next) => {
       action: 'import.approved',
       entityType: 'import_batch',
       entityId: id,
-      detail: { rows_approved: approvedCount, all: all === true },
+      detail: { rows_approved: approvedCount, all: all === true, ...(skippedSaved && { skipped_already_saved: skippedSaved }) },
     });
 
     // Re-check with the new rows in the history (D175), and re-match card
@@ -278,6 +302,10 @@ router.post('/:id/approve', validate(approveSchema), async (req, res, next) => {
       const transfers = await rematchTransfers();
       // A card without closing and due days yet learns them from this statement (D270).
       const cardDays = await learnCardDays(batch.account_id);
+      // The card it is now: the newest statement's last 4 and product (D414).
+      await learnCurrentCard(batch.account_id);
+      // And its automatic nickname, kept current with the card (D416).
+      await fillNicknames();
       // And the mailing address its first page prints, when it's the newest statement (D302).
       await learnMailingAddress(batch.account_id);
       // And this statement's own, for the person's address history (D303).
@@ -304,7 +332,7 @@ router.post('/:id/approve', validate(approveSchema), async (req, res, next) => {
       req.log?.warn({ err }, 're-check after approval failed');
     }
 
-    res.json({ id, status: 'APPROVED', rows_approved: approvedCount, follow_up });
+    res.json({ id, status: 'APPROVED', rows_approved: approvedCount, skipped_already_saved: skippedSaved, follow_up });
   } catch (err) {
     next(err);
   }

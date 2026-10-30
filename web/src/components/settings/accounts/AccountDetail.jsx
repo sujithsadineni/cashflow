@@ -1,3 +1,4 @@
+import { cardProductFor } from '../../../lib/cards/card-products';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
@@ -33,6 +34,14 @@ import { StatementFactsGroup } from './StatementFactsGroup';
 const TONE = { spend: 'text-spend', warn: 'text-warn', earn: 'text-earn', muted: 'text-muted' };
 // The local date, not UTC's: in the evening UTC is already tomorrow.
 const today = () => new Date().toLocaleDateString('en-CA');
+const NETWORKS = { VISA: 'Visa', MASTERCARD: 'Mastercard', AMEX: 'American Express', DISCOVER: 'Discover' };
+const NETWORK_CHOICES = [{ value: '', label: 'Automatic' }, ...Object.entries(NETWORKS).map(([value, label]) => ({ value, label }))];
+/** "Mastercard", or "Automatic · Mastercard" from its product, or "Automatic". */
+function networkLabel(account) {
+  if (account.network) return NETWORKS[account.network];
+  const auto = cardProductFor(account)?.network?.toUpperCase();
+  return NETWORKS[auto] ? `Automatic · ${NETWORKS[auto]}` : 'Automatic';
+}
 const holdsBalance = (a) => a.account_type === 'SAVINGS' || a.account_type === 'INVESTMENT';
 // A new account starts as the list's filters describe it: their person and type, if chosen.
 const blank = (people, start = {}) => ({
@@ -292,6 +301,14 @@ export function AccountDetail({ account = null, mode, people, all, start, still,
             () => field('nickname', { placeholder: 'Not set', maxLength: 24 }))}
           {row('issuer', 'Issuer', notSet(account?.issuer),
             () => <SuggestField id={`${ids}-issuer`} value={form.issuer} onChange={set('issuer')} choices={issuerChoices(all)} label="Banks on file" placeholder="Bank" invalid={Boolean(shown('issuer'))} className={FIELD} />)}
+          {/* The card's network (D416): automatic is its product's, else picked here. */}
+          {!adding && card && (
+            <GroupRow label="Network">
+              {editing
+                ? <Dropdown inRow value={form.network} onChange={set('network')} aria-label="Network" options={NETWORK_CHOICES} />
+                : <span className="text-ink">{networkLabel(account)}</span>}
+            </GroupRow>
+          )}
           {row('mask', 'Last 4 digits', notSet(account?.mask, 'tnum'), () => field('mask', { inputMode: 'numeric', maxLength: 4, placeholder: 'Not set', className: 'tnum' }))}
           {!adding && row('holder_name', card ? 'Name on card' : 'Name on statements', notSet(account.holder_name), () => field('holder_name', { placeholder: 'Not set' }))}
         </GroupBlock>
@@ -307,7 +324,12 @@ export function AccountDetail({ account = null, mode, people, all, start, still,
             {row('due_day', 'Payment due', dayValue(account.due_day, suggestion.due), () => dayField('due_day', suggestion.due))}
             {/* A limit set by hand (D354), used only where its statements print none. */}
             {row('credit_limit_manual', 'Your limit',
-              account.credit_limit_manual_cents != null ? <span className="text-ink tnum">{formatMoney(Number(account.credit_limit_manual_cents))}</span> : <span className="text-faint">Not set</span>,
+              account.credit_limit_manual_cents != null
+                ? <span className="text-ink tnum">{formatMoney(Number(account.credit_limit_manual_cents))}</span>
+                // None typed: the limit its statements print, said so, rather than "Not set" beside a known limit (D416).
+                : account.credit_line?.credit_limit_cents != null
+                  ? <span className="truncate tnum"><span className="text-ink">{formatMoney(Number(account.credit_line.credit_limit_cents))}</span> <span className="text-faint">· from its statements</span></span>
+                  : <span className="text-faint">Not set</span>,
               () => field('credit_limit_manual', { inputMode: 'decimal', placeholder: 'Not set', className: 'tnum' }))}
           </GroupBlock>
         )}

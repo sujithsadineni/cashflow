@@ -46,8 +46,31 @@ accountMembersRouter.post('/:id/members', validate(accountMemberCreateSchema), a
     const { person_id, role, printed_name = null, card_ending = null, since = null } = req.body;
     const { rows: person } = await query('SELECT 1 FROM person WHERE id = $1', [person_id]);
     if (person.length === 0) return res.status(400).json({ error: 'No such person', field: 'person_id' });
-    const { rows: taken } = await query('SELECT 1 FROM account_member WHERE account_id = $1 AND person_id = $2', [id, person_id]);
-    if (taken.length > 0) return res.status(409).json({ error: 'That person is already on this card', field: 'person_id' });
+    const { rows: [taken] } = await query(
+      'SELECT id, person_id, role, printed_name, card_ending, since, is_active FROM account_member WHERE account_id = $1 AND person_id = $2', [id, person_id]);
+    if (taken) {
+      // Already on the card, or added and taken off again (D415): naming a section for them fills in
+      // what's missing (the printed name, the card ending) and puts them back on, instead of refusing,
+      // so the section files to them. The same person under the same name, still on, is a repeat.
+      const fills = {
+        ...(printed_name && !taken.printed_name && { printed_name }),
+        ...(card_ending && !taken.card_ending && { card_ending }),
+        ...(!taken.is_active && { is_active: true }),
+      };
+      if (Object.keys(fills).length === 0) return res.status(409).json({ error: 'That person is already on this card', field: 'person_id' });
+      const result = await withTransaction(async (client) => {
+        const sets = Object.keys(fills).map((k, i) => `${k} = $${i + 2}`).join(', ');
+        await client.query(`UPDATE account_member SET ${sets} WHERE id = $1`, [taken.id, ...Object.values(fills)]);
+        const moved = await fileSpenders(client, id);
+        const auditId = await audit({
+          client, action: 'account.member_changed', entityType: 'account', entityId: id,
+          // The whole row as it was, so Undo puts back exactly that (it restores every EDITABLE field).
+          detail: { member_id: taken.id, person_id, fields: Object.keys(fills), before: Object.fromEntries(EDITABLE.map((f) => [f, taken[f]])), moved },
+        });
+        return { member_id: taken.id, moved: moved.length, audit_id: auditId };
+      });
+      return res.status(200).json(result);
+    }
 
     const result = await withTransaction(async (client) => {
       const { rows: [member] } = await client.query(
