@@ -90,20 +90,21 @@ export function ContactlessIcon({ size = 22 }) {
 }
 
 /**
- * A shared card (D344), shown, not spelled out: two people in a frosted circle.
- * Who's on it is in its label, for a hover and for a screen reader.
+ * A shared card (D344), shown, not spelled out: two people on a solid badge in the design's
+ * accent (its info colour), ringed in white, so it reads on any card face (a pale frosted one vanished on light
+ * cards and photos, D408). Who's on it is its label, for a hover and for a screen reader.
  */
-export function SharedMark({ people, light = false }) {
+export function SharedMark({ people }) {
   if (!people) return null;
   const names = people.map((p) => maskName(p.name)).join(' and ');
   return (
     <span role="img" aria-label={`Shared: ${names}`} title={`Shared: ${names}`}
-      className={`flex h-7 w-7 items-center justify-center rounded-full backdrop-blur-sm ${light ? 'bg-black/10 text-black/70' : 'bg-white/20 text-white'}`}>
-      <svg width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-        <circle cx="7.5" cy="6.5" r="2.8" stroke="currentColor" strokeWidth="1.5" />
-        <path d="M2.5 16.5c0-2.8 2.2-4.8 5-4.8s5 2 5 4.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-        <circle cx="13.5" cy="7.5" r="2.3" stroke="currentColor" strokeWidth="1.4" />
-        <path d="M14.2 11.8c2 .3 3.5 2 3.5 4.2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      className="flex h-7 w-7 items-center justify-center rounded-full bg-info text-white shadow-md ring-2 ring-white/90">
+      <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        <circle cx="7.5" cy="6.5" r="2.8" stroke="currentColor" strokeWidth="1.7" />
+        <path d="M2.5 16.5c0-2.8 2.2-4.8 5-4.8s5 2 5 4.8" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+        <circle cx="13.5" cy="7.5" r="2.3" stroke="currentColor" strokeWidth="1.6" />
+        <path d="M14.2 11.8c2 .3 3.5 2 3.5 4.2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
       </svg>
     </span>
   );

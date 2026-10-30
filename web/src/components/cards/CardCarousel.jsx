@@ -184,7 +184,8 @@ export function CardFace({ account }) {
               bold text reads against ANY photo, not only a dark one. */}
           <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/85 via-black/55 to-transparent" />
 
-          {shared && <div className="absolute right-5 top-5"><SharedMark people={shared} /></div>}
+          {/* Left of the flip hint in the top-right corner, never over it. */}
+          {shared && <div className="absolute right-11 top-4"><SharedMark people={shared} /></div>}
 
           <CardNumber groups={numberGroups} className="bottom-16 text-xl" style={LEGIBLE_TEXT_SHADOW} />
 
@@ -205,9 +206,10 @@ export function CardFace({ account }) {
               {account.issuer && !brand && <div className={`text-xs ${ink.soft}`}>{account.issuer}</div>}
             </div>
             <div className={`flex shrink-0 items-center gap-2 ${ink.mark}`}>
-              {shared && <SharedMark people={shared} light={product?.light} />}
+              {shared && <SharedMark people={shared} />}
               {credit ? <ChipIcon /> : brand ? <BrandMark brandKey={brand.key} /> : <BankMark />}
-              <ContactlessIcon />
+              {/* Tap to pay is a card's: a bank account's face doesn't get it. */}
+              {credit && <ContactlessIcon />}
             </div>
           </div>
 
