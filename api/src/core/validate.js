@@ -70,11 +70,27 @@ export const accountConfirmSchema = z
     force: z.boolean().optional(),
     create: z
       .object({
-        person_id: z.coerce.number({ message: 'Pick whose account it is' }).int().positive('Pick whose account it is'),
+        // The owner, or (a shared statement, D400) whichever member is the primary.
+        person_id: z.coerce.number({ message: 'Pick whose account it is' }).int().positive('Pick whose account it is').optional(),
+        // A statement printing several people's sections, said to be shared: who each name is.
+        members: z.array(z.object({
+          printed_name: z.string().trim().min(1).max(80),
+          role: z.enum(['owner', 'co_owner', 'additional']),
+          person_id: z.coerce.number().int().positive().optional(),
+          new_person: z.string().trim().min(1).max(80).optional(),
+          card_ending: z.string().trim().regex(/^\d{4}$/).nullable().optional(),
+        }).refine((m) => (m.person_id !== undefined) !== (m.new_person !== undefined), 'Pick who this is'))
+          .max(6).optional(),
+        // A card whose statement prints no limit: typed in once, or skipped for Settings later.
+        credit_limit_cents: z.coerce.number().int().positive('Enter the limit, or skip it').optional(),
         name: z.string().trim().min(1, 'Name is required').max(60),
         issuer: z.string().trim().max(60).optional().or(z.literal('')),
         account_type: z.enum(['CREDIT_CARD', 'CHECKING', 'SAVINGS', 'INVESTMENT']),
         mask: z.string().trim().regex(/^\d{4}$/, 'Enter the last 4 digits').optional().or(z.literal('')),
+      })
+      .refine((c) => (c.members?.length ? c.members.filter((m) => m.role === 'owner').length === 1 : c.person_id !== undefined), {
+        message: 'Pick whose account it is, or one primary on a shared one',
+        path: ['person_id'],
       })
       .optional(),
   })

@@ -40,9 +40,16 @@ router.post('/:id/account', validate(accountConfirmSchema), async (req, res, nex
     let accountId = account_id ?? null;
     let accountName, accountMask;
 
+    const newPeople = []; // people a shared statement added (D400): Import sends them to People to check
     if (create) {
-      const { rows: people } = await query('SELECT id FROM person WHERE id = $1', [create.person_id]);
-      if (people.length === 0) {
+      const members = create.members ?? [];
+      const chosen = members.map((m) => m.person_id).filter(Boolean);
+      if (new Set(chosen).size !== chosen.length) {
+        return res.status(400).json({ error: 'Each name on the statement needs a different person', field: 'members' });
+      }
+      const known = [create.person_id, ...chosen].filter(Boolean);
+      const { rows: found } = await query('SELECT id FROM person WHERE id = ANY($1)', [known]);
+      if (found.length !== new Set(known).size) {
         return res.status(400).json({ error: 'That person does not exist', field: 'person_id' });
       }
       const detectedIssuer = create.issuer === '' || create.issuer === undefined ? null : create.issuer;
@@ -52,31 +59,74 @@ router.post('/:id/account', validate(accountConfirmSchema), async (req, res, nex
       // the random palette, so `color` is left NULL here instead.
       const skipRandomColor = create.account_type !== 'CREDIT_CARD' && isKnownBank(detectedIssuer);
 
-      const { rows } = await query(
-        `INSERT INTO account (person_id, name, issuer, account_type, mask, holder_name, color)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         RETURNING id, name, mask`,
-        [
-          create.person_id,
-          create.name,
-          detectedIssuer,
-          create.account_type,
-          create.mask === '' || create.mask === undefined ? null : create.mask,
-          // The name as printed on the statement — extracted data, not
-          // something the human types in the create form.
-          batch.detected_holder ?? null,
-          skipRandomColor ? null : randomCardColor(),
-        ]
-      );
-      accountId = rows[0].id;
-      accountName = rows[0].name;
-      accountMask = rows[0].mask;
-      await audit({
-        action: 'account.created',
-        entityType: 'account',
-        entityId: accountId,
-        detail: { name: rows[0].name, source: 'statement_detection', import_batch_id: id },
+      // One transaction: the people a shared statement brings, the account, who's on it and its limit.
+      const created = await withTransaction(async (client) => {
+        const resolved = [];
+        for (const m of members) {
+          let personId = m.person_id;
+          if (!personId) {
+            const name = m.new_person.replace(/\s+/g, ' ');
+            const { rows: [same] } = await client.query('SELECT id FROM person WHERE lower(trim(name)) = lower($1)', [name]);
+            personId = same?.id;
+            if (!personId) {
+              personId = (await client.query('INSERT INTO person (name) VALUES ($1) RETURNING id', [name])).rows[0].id;
+              newPeople.push(personId);
+              await audit({ client, action: 'person.created', entityType: 'person', entityId: personId, detail: { name, source: 'statement', import_batch_id: id } });
+            }
+          }
+          resolved.push({ ...m, person_id: personId });
+        }
+        if (new Set(resolved.map((m) => m.person_id)).size !== resolved.length) {
+          throw Object.assign(new Error('Each name on the statement needs a different person'), { status: 400 });
+        }
+        const ownerId = resolved.find((m) => m.role === 'owner')?.person_id ?? create.person_id;
+        const limit = create.account_type === 'CREDIT_CARD' ? create.credit_limit_cents ?? null : null;
+
+        const { rows } = await client.query(
+          `INSERT INTO account (person_id, name, issuer, account_type, mask, holder_name, color, credit_limit_manual_cents)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+           RETURNING id, name, mask`,
+          [
+            ownerId,
+            create.name,
+            detectedIssuer,
+            create.account_type,
+            create.mask === '' || create.mask === undefined ? null : create.mask,
+            // The name as printed on the statement — extracted data, not
+            // something the human types in the create form.
+            batch.detected_holder ?? null,
+            skipRandomColor ? null : randomCardColor(),
+            limit,
+          ]
+        );
+        const account = rows[0];
+        await audit({
+          client,
+          action: 'account.created',
+          entityType: 'account',
+          entityId: account.id,
+          detail: { name: account.name, source: 'statement_detection', import_batch_id: id, ...(limit && { credit_limit_manual_cents: limit }), ...(resolved.length && { shared: true }) },
+        });
+        for (const m of resolved) {
+          const { rows: [member] } = await client.query(
+            `INSERT INTO account_member (account_id, person_id, role, printed_name, card_ending)
+             VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+            [account.id, m.person_id, m.role, m.printed_name, m.card_ending ?? null]
+          );
+          await audit({
+            client, action: 'account.member_added', entityType: 'account', entityId: account.id,
+            detail: { member_id: member.id, person_id: m.person_id, role: m.role, card_ending: m.card_ending ?? null, before: null, source: 'statement', import_batch_id: id },
+          });
+        }
+        return account;
+      }).catch((err) => {
+        if (err.status === 400) return err;
+        throw err;
       });
+      if (created instanceof Error) return res.status(400).json({ error: created.message, field: 'members' });
+      accountId = created.id;
+      accountName = created.name;
+      accountMask = created.mask;
     } else {
       const { rows } = await query('SELECT id, name, mask, issuer, account_type FROM account WHERE id = $1', [accountId]);
       if (rows.length === 0) {
@@ -127,7 +177,7 @@ router.post('/:id/account', validate(accountConfirmSchema), async (req, res, nex
       detail: { account_id: accountId, created: Boolean(create), ...(csvRows.length && { csv_rows_resigned: csvRows.length }) },
     });
 
-    res.json({ id, status: 'REVIEW', account_id: accountId });
+    res.json({ id, status: 'REVIEW', account_id: accountId, new_people: newPeople });
   } catch (err) {
     next(err);
   }

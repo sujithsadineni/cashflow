@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { txnName } from '../../lib/transactions/txn-name';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, useReducedMotion } from 'motion/react';
-import { api, formatMoney, formatShortDate, maskName, TXN_TYPE_LABELS } from '../../api';
+import { api, dollarsToCents, formatMoney, formatShortDate, maskName, TXN_TYPE_LABELS } from '../../api';
 import { Button, Select, Field, TextInput, EditableText, Segmented } from '../ui/Form';
 import { MerchantAvatar } from '../ui/MerchantAvatar';
 import { lookupMerchantDomain } from '../../lib/transactions/merchant-logos';
@@ -17,6 +17,7 @@ import { StatementReveal, SectionLine } from './StatementReveal';
 import { StatementNotes, NOTES_BOX } from './StatementNotes';
 import { statementNotes } from '../../lib/imports/statement-notes';
 import { holderName, personForHolder } from '../../lib/imports/holder-name';
+import { namesOnStatement, startingRole, ROLE_CHOICES } from '../../lib/imports/statement-names';
 import { aprText } from '../../lib/cards/utilisation';
 import { useHeight } from '../../hooks/use-height';
 import { printedOrder, printedSections, sectionFigures } from '../../lib/imports/printed-order';
@@ -50,7 +51,7 @@ const TYPE_WORD = { CHECKING: 'Checking', SAVINGS: 'Savings', CREDIT_CARD: 'Card
  * can be approved until this is settled: a statement attached to the
  * wrong account is the worst failure an importer can have.
  */
-function AccountCard({ batch, accounts, people, onConfirmed, pickOther = false }) {
+function AccountCard({ batch, rows = [], accounts, people, onConfirmed, pickOther = false }) {
   const suggested = accounts.find((a) => a.id === batch.suggested_account_id) ?? null;
   const detectedLabel = [
     batch.detected_account_name,
@@ -81,6 +82,29 @@ function AccountCard({ batch, accounts, people, onConfirmed, pickOther = false }
     mask: batch.detected_mask ?? '',
   });
   const addingPerson = form.person_id === NEW_PERSON;
+
+  // Several people's sections on one statement (D400): ask whether it's shared before
+  // anything is created, then who each name is and their part in it.
+  const names = useMemo(() => namesOnStatement(batch, rows), [batch, rows]);
+  const [shared, setShared] = useState(names.length > 1 ? null : false);
+  const [members, setMembers] = useState(() => names.map((n, i) => {
+    const known = personForHolder(n.printed, people);
+    return { ...n, role: startingRole(n, i), person: String(known?.id ?? NEW_PERSON), new_person: holderName(n.printed) };
+  }));
+  const setMember = (i, key) => (e) => setMembers((ms) => ms.map((m, j) => {
+    if (j !== i) return key === 'role' && e.target.value === 'owner' && m.role === 'owner' ? { ...m, role: 'co_owner' } : m;
+    return { ...m, [key]: e.target.value };
+  }));
+  const picked = members.map((m) => m.person).filter((p) => p !== NEW_PERSON);
+  const membersReady = members.filter((m) => m.role === 'owner').length === 1
+    && members.every((m) => m.person !== NEW_PERSON || m.new_person.trim())
+    && new Set(picked).size === picked.length;
+
+  // A card whose statement prints no limit: asked once, here, or skipped for Settings later.
+  const needsLimit = form.account_type === 'CREDIT_CARD' && batch.detected_summary?.credit_limit_cents == null;
+  const [limit, setLimit] = useState({ text: '', skipped: false });
+  const limitCents = needsLimit && !limit.skipped ? dollarsToCents(limit.text) : NaN;
+  const limitReady = !needsLimit || limit.skipped || limitCents > 0;
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -90,9 +114,9 @@ function AccountCard({ batch, accounts, people, onConfirmed, pickOther = false }
     setError(null);
     setMismatch(null);
     try {
-      await api.imports.confirmAccount(batch.id, body);
+      const res = await api.imports.confirmAccount(batch.id, body);
       onConfirmed(accounts.find((a) => a.id === body.account_id)?.name ?? body.create?.name ?? null);
-      return true;
+      return res ?? {};
     } catch (err) {
       if (err.field === 'account_mismatch') setMismatch({ message: err.message, body });
       else setError(err.message);
@@ -105,6 +129,18 @@ function AccountCard({ batch, accounts, people, onConfirmed, pickOther = false }
 
   const create = async () => {
     const { new_person, ...fields } = form;
+    const credit_limit_cents = limitCents > 0 ? limitCents : undefined;
+    if (shared) {
+      const res = await confirm({ create: { ...fields, person_id: undefined, credit_limit_cents, members: members.map((m) => ({
+        printed_name: m.printed, role: m.role, card_ending: m.card_ending,
+        ...(m.person === NEW_PERSON ? { new_person: m.new_person.trim().replace(/\s+/g, ' ') } : { person_id: Number(m.person) }),
+      })) } });
+      if (res?.new_people?.length) {
+        invalidate('reference');
+        checkInPeople(res.new_people[0]);
+      }
+      return;
+    }
     let personId = Number(form.person_id);
     if (addingPerson) {
       setBusy(true);
@@ -118,10 +154,10 @@ function AccountCard({ batch, accounts, people, onConfirmed, pickOther = false }
       }
     }
     // Someone new came off this statement: check them in People first (D399), then back here for the rows.
-    if ((await confirm({ create: { ...fields, person_id: personId } })) && addingPerson) {
-      navigate(`/settings?${new URLSearchParams({ tab: 'people', person: String(personId), check: '1', back: `/import?open=${batch.id}` })}`);
-    }
+    if ((await confirm({ create: { ...fields, person_id: personId, credit_limit_cents } })) && addingPerson) checkInPeople(personId);
   };
+  const checkInPeople = (personId) =>
+    navigate(`/settings?${new URLSearchParams({ tab: 'people', person: String(personId), check: '1', back: `/import?open=${batch.id}` })}`);
 
   return (
     <div className="mt-4 rounded-lg border border-warn/40 bg-raised p-5">
@@ -187,14 +223,52 @@ function AccountCard({ batch, accounts, people, onConfirmed, pickOther = false }
       {mode === 'create' && (
         <>
           <p className="mb-4 text-ink">New account — everything is editable before it's created.</p>
+          {shared === null && (
+            <div className="mb-4 rounded-lg border border-rule bg-paper p-4">
+              <p className="text-ink">
+                I found {names.length} names on this statement: {names.map((n) => maskName(n.printed)).join(', ')}. Is it shared?
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button onClick={() => setShared(true)}>Yes, it&apos;s shared</Button>
+                <Button variant="quiet" onClick={() => setShared(false)}>No, one owner</Button>
+              </div>
+            </div>
+          )}
+          {shared && (
+            <div className="mb-4 space-y-3">
+              <p className="text-sm text-muted">Who each name is, and their part. The primary owns it; payments stay with them.</p>
+              {members.map((m, i) => (
+                <div key={m.printed} className="grid items-end gap-3 sm:grid-cols-3">
+                  <Field label={`${maskName(m.printed)}${m.card_ending ? ` ··${m.card_ending}` : ''}`}>
+                    <Select
+                      value={m.person}
+                      onChange={setMember(i, 'person')}
+                      options={[...personChoices(people), { ...blankChoice('Someone new…'), value: NEW_PERSON }]}
+                    />
+                  </Field>
+                  {m.person === NEW_PERSON ? (
+                    <Field label="Their name" hint="Added to People">
+                      <TextInput value={m.new_person} onChange={setMember(i, 'new_person')} placeholder="Alex Morgan" />
+                    </Field>
+                  ) : <span />}
+                  <Field label="Part">
+                    <Select value={m.role} onChange={setMember(i, 'role')} options={ROLE_CHOICES} />
+                  </Field>
+                </div>
+              ))}
+              {!membersReady && <p className="text-sm text-faint">One primary, and a different person for each name.</p>}
+            </div>
+          )}
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Whose account is it?">
-              <Select
-                value={form.person_id}
-                onChange={set('person_id')}
-                options={[...personChoices(people), { ...blankChoice('Someone new…'), value: NEW_PERSON }]}
-              />
-            </Field>
+            {!shared && (
+              <Field label="Whose account is it?">
+                <Select
+                  value={form.person_id}
+                  onChange={set('person_id')}
+                  options={[...personChoices(people), { ...blankChoice('Someone new…'), value: NEW_PERSON }]}
+                />
+              </Field>
+            )}
             <Field label="Type">
               <Select
                 value={form.account_type}
@@ -202,7 +276,7 @@ function AccountCard({ batch, accounts, people, onConfirmed, pickOther = false }
                 options={form.account_type ? ACCOUNT_TYPE_CHOICES : [blankChoice('Pick one…'), ...ACCOUNT_TYPE_CHOICES]}
               />
             </Field>
-            {addingPerson && (
+            {!shared && addingPerson && (
               <Field label="Their name" hint="Added to People with this account">
                 <TextInput value={form.new_person} onChange={set('new_person')} placeholder="Alex Morgan" />
               </Field>
@@ -216,11 +290,26 @@ function AccountCard({ batch, accounts, people, onConfirmed, pickOther = false }
             <Field label="Last 4 digits" hint="Optional">
               <TextInput value={form.mask} onChange={set('mask')} inputMode="numeric" maxLength={4} className="tnum" />
             </Field>
+            {needsLimit && !limit.skipped && (
+              <Field label="Credit limit" hint="Not printed on this statement">
+                <div className="flex items-center gap-2">
+                  <TextInput value={limit.text} onChange={(e) => setLimit({ text: e.target.value, skipped: false })} inputMode="decimal" placeholder="5,000" className="tnum" />
+                  <Button variant="quiet" onClick={() => setLimit({ text: '', skipped: true })}>Skip, add it later</Button>
+                </div>
+              </Field>
+            )}
           </div>
+          {needsLimit && limit.skipped && (
+            <p className="mt-2 text-sm text-faint">
+              No limit for now; add it any time in Settings → Accounts.{' '}
+              <button type="button" className="underline" onClick={() => setLimit({ text: '', skipped: false })}>Add it now</button>
+            </p>
+          )}
           <div className="mt-4 flex items-center gap-2">
             <Button
               onClick={create}
-              disabled={busy || !form.name.trim() || !form.account_type || (addingPerson && !form.new_person.trim())}
+              disabled={busy || !form.name.trim() || !form.account_type || shared === null || !limitReady
+                || (shared ? !membersReady : addingPerson && !form.new_person.trim())}
             >
               {busy ? 'Creating…' : 'Create & attach'}
             </Button>
@@ -778,6 +867,7 @@ export function Review({ batchId, categories, accounts, people, onApproved, onAc
       {needsAccount && (
         <AccountCard
           batch={data.batch}
+          rows={data.rows}
           accounts={accounts}
           people={people}
           pickOther={pickOther}

@@ -83,3 +83,38 @@ test('two people can\'t share one name, on add or rename', { skip }, async () =>
   assert.equal((await send('PATCH', `/people/${other.id}`, { name: 'Sam Sample' })).status, 409);
   assert.equal((await send('PATCH', `/people/${other.id}`, { name: 'Jo Sample' })).status, 200, 'keeping one\'s own name is fine');
 });
+
+test('a shared statement creates its people, members and limit in one go (D400)', { skip }, async () => {
+  const owner = (await query(`SELECT id FROM person WHERE name = 'Sam Sample'`)).rows[0];
+  const batch = await (await upload('fresh-d.csv', BANK_CSV.replace('3200.00', '2900.00'))).json();
+  await send('POST', `/imports/${batch.id}/parse`);
+  const res = await send('POST', `/imports/${batch.id}/account`, { create: {
+    name: 'Shared Card', account_type: 'CREDIT_CARD', credit_limit_cents: 500000,
+    members: [
+      { printed_name: 'SAM SAMPLE', role: 'owner', person_id: owner.id },
+      { printed_name: 'RIO SAMPLE', role: 'additional', new_person: 'Rio Sample', card_ending: '4321' },
+    ],
+  } });
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.new_people.length, 1);
+  const account = (await query('SELECT person_id, credit_limit_manual_cents FROM account WHERE id = $1', [body.account_id])).rows[0];
+  assert.equal(account.person_id, owner.id, 'the primary owns it');
+  assert.equal(Number(account.credit_limit_manual_cents), 500000);
+  const members = (await query('SELECT role, printed_name, card_ending FROM account_member WHERE account_id = $1 ORDER BY role DESC', [body.account_id])).rows;
+  assert.deepEqual(members.map((m) => [m.role, m.printed_name, m.card_ending]), [['owner', 'SAM SAMPLE', null], ['additional', 'RIO SAMPLE', '4321']]);
+  assert.equal((await query(`SELECT count(*)::int AS n FROM audit_log WHERE action = 'account.member_added' AND entity_id = $1`, [body.account_id])).rows[0].n, 2);
+});
+
+test('a shared statement needs one primary and a different person per name', { skip }, async () => {
+  const owner = (await query(`SELECT id FROM person WHERE name = 'Sam Sample'`)).rows[0];
+  const batch = await (await upload('fresh-e.csv', BANK_CSV.replace('3200.00', '2800.00'))).json();
+  await send('POST', `/imports/${batch.id}/parse`);
+  const twice = await send('POST', `/imports/${batch.id}/account`, { create: { name: 'X', account_type: 'CREDIT_CARD', members: [
+    { printed_name: 'A', role: 'owner', person_id: owner.id }, { printed_name: 'B', role: 'additional', person_id: owner.id }] } });
+  assert.equal(twice.status, 400);
+  const noPrimary = await send('POST', `/imports/${batch.id}/account`, { create: { name: 'X', account_type: 'CREDIT_CARD', members: [
+    { printed_name: 'A', role: 'co_owner', person_id: owner.id }, { printed_name: 'B', role: 'co_owner', new_person: 'Bo Sample' }] } });
+  assert.equal(noPrimary.status, 400);
+  assert.equal((await query(`SELECT count(*)::int AS n FROM person WHERE name = 'Bo Sample'`)).rows[0].n, 0, 'nothing half-made');
+});
