@@ -66,6 +66,8 @@ export const importCreateSchema = z.object({
 export const accountConfirmSchema = z
   .object({
     account_id: z.coerce.number().int().positive().optional(),
+    // Attach to an account the statement doesn't look like (another bank, or a card for a bank statement).
+    force: z.boolean().optional(),
     create: z
       .object({
         person_id: z.coerce.number({ message: 'Pick whose account it is' }).int().positive('Pick whose account it is'),

@@ -5,7 +5,7 @@
  */
 import { resolveSpender, originalPurchase } from './spender.js';
 
-/** The card's members and every last four the account itself has been printed with. */
+/** The card's members, every last four the account itself has been printed with, and the owner's names. */
 export async function spenderContext(db, accountId) {
   const { rows: members } = await db.query(
     `SELECT id, person_id, role, printed_name, card_ending, since, is_active FROM account_member WHERE account_id = $1 ORDER BY id`,
@@ -16,7 +16,12 @@ export async function spenderContext(db, accountId) {
      UNION SELECT card_mask FROM statement WHERE account_id = $1 AND card_mask IS NOT NULL`,
     [accountId]
   );
-  return { members, ownMasks: masks.map((m) => m.mask) };
+  // The names the owner is printed under: the statement's holder, saved on the account, and their name in People.
+  const { rows: own } = await db.query(
+    'SELECT a.holder_name, p.name FROM account a LEFT JOIN person p ON p.id = a.person_id WHERE a.id = $1',
+    [accountId]
+  );
+  return { members, ownMasks: masks.map((m) => m.mask), ownNames: [own[0]?.holder_name, own[0]?.name].filter(Boolean) };
 }
 
 /**

@@ -9,7 +9,8 @@
  *      ways; a card number can't);
  *   2. then the exact printed name, ignoring case and spacing;
  *   3. a card ending the account itself has been printed with is the
- *      owner's card: the account's person, nothing to propose;
+ *      owner's card: the account's person, nothing to propose; so is a
+ *      section printed with the owner's own name and no card ending;
  *   4. a member added before their section ever printed (no name, no card
  *      ending yet: an "expected" member) takes a section that isn't the
  *      owner's, when they're the only one waiting;
@@ -25,7 +26,7 @@
  */
 export const normalizePrintedName = (name) => (name ?? '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
 
-export function resolveSpender(row, { members = [], ownMasks = [] } = {}) {
+export function resolveSpender(row, { members = [], ownMasks = [], ownNames = [] } = {}) {
   const name = normalizePrintedName(row.spender_name);
   const ending = row.card_ending ?? null;
   if (!name && !ending) return { personId: null, proposed: false };
@@ -41,6 +42,9 @@ export function resolveSpender(row, { members = [], ownMasks = [] } = {}) {
     if (byName.length === 1) return { personId: byName[0].person_id, proposed: false };
   }
   if (ending && ownMasks.includes(ending)) return { personId: null, proposed: false };
+  // A co-owner's statement prints the owner's own section too (Apple Card, no card numbers):
+  // under the name the account's statements print its holder as, that's the owner, not someone new.
+  if (name && !ending && ownNames.some((n) => normalizePrintedName(n) === name)) return { personId: null, proposed: false };
   const expected = active.filter((m) => m.role !== 'owner' && !m.printed_name && !m.card_ending);
   if (expected.length === 1) return { personId: expected[0].person_id, proposed: false };
   return { personId: null, proposed: true };

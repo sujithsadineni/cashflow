@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { txnName } from '../../lib/transactions/txn-name';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion, useReducedMotion } from 'motion/react';
 import { api, formatMoney, formatShortDate, maskName, TXN_TYPE_LABELS } from '../../api';
 import { Button, Select, Field, TextInput, EditableText, Segmented } from '../ui/Form';
@@ -16,7 +16,7 @@ import { LineButton, LineReview } from './LineReview';
 import { StatementReveal, SectionLine } from './StatementReveal';
 import { StatementNotes, NOTES_BOX } from './StatementNotes';
 import { statementNotes } from '../../lib/imports/statement-notes';
-import { holderName } from '../../lib/imports/holder-name';
+import { holderName, personForHolder } from '../../lib/imports/holder-name';
 import { aprText } from '../../lib/cards/utilisation';
 import { useHeight } from '../../hooks/use-height';
 import { printedOrder, printedSections, sectionFigures } from '../../lib/imports/printed-order';
@@ -41,6 +41,7 @@ function announceApproval(notify, result) {
 }
 
 const NEW_PERSON = 'new';
+const TYPE_WORD = { CHECKING: 'Checking', SAVINGS: 'Savings', CREDIT_CARD: 'Card', INVESTMENT: 'Investment' };
 
 /**
  * The account confirmation card — step one of review. The parser
@@ -58,19 +59,21 @@ function AccountCard({ batch, accounts, people, onConfirmed, pickOther = false }
 
   // Turned down in Import's Find the card popup (D325): straight to picking, no second "Yes, that's it".
   const [mode, setMode] = useState(suggested && !pickOther ? 'suggested' : 'resolve');
-  const [pickedId, setPickedId] = useState(String(accounts[0]?.id ?? ''));
-  // The statement's printed holder picks the owner up front, at first
-  // render rather than corrected by an effect after (D211).
-  const holderMatch = (() => {
-    const holder = batch.detected_holder?.toLowerCase();
-    return holder ? people.find((p) => holder.includes(p.name.split(' ')[0].toLowerCase())) : null;
-  })();
+  // Nothing pre-picked: an unrelated account one click from "Use this account" is how a bank
+  // statement landed on a credit card.
+  const [pickedId, setPickedId] = useState('');
+  const [mismatch, setMismatch] = useState(null); // the API's "doesn't look like this account"
+  // The statement's printed holder picks the owner up front, at first render rather than
+  // corrected by an effect after (D211), however the bank prints them (personForHolder).
+  const holderMatch = personForHolder(batch.detected_holder, people);
   // Nobody in People yet (a new install), or a holder nobody matches: the owner
   // can be added right here, named as the statement prints them.
   const [form, setForm] = useState({
-    person_id: String(holderMatch?.id ?? people[0]?.id ?? NEW_PERSON),
+    // A holder it can't place is someone new, never quietly the first person in People.
+    person_id: String(holderMatch?.id ?? (batch.detected_holder ? NEW_PERSON : people[0]?.id ?? NEW_PERSON)),
     new_person: holderName(batch.detected_holder),
-    name: batch.detected_account_name ?? '',
+    // A bank statement often prints no product name: the bank and the kind of account will do.
+    name: batch.detected_account_name ?? ([batch.detected_issuer, TYPE_WORD[batch.detected_account_type]].filter(Boolean).join(' ') || ''),
     issuer: batch.detected_issuer ?? '',
     // A CSV says nothing about what it came from: the person picks, rather than a
     // silent "Credit card" that reads a bank file's money the wrong way round.
@@ -81,22 +84,18 @@ function AccountCard({ batch, accounts, people, onConfirmed, pickOther = false }
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  // If the printed holder name matches one of the two people,
-  // pre-select them as the owner. Matches on the first word of
-  // person.name, not the whole string — a real statement prints a
-  // middle name ("ALEX JAMES MORGAN") that a full "Alex
-  // Morgan" wouldn't appear inside of as a contiguous substring,
-  // so matching the full name would silently stop working the moment
-  // a person's name has more than one word in it. (Applied in the
-  // form's initial state below.)
+  const navigate = useNavigate();
   const confirm = async (body) => {
     setBusy(true);
     setError(null);
+    setMismatch(null);
     try {
       await api.imports.confirmAccount(batch.id, body);
       onConfirmed(accounts.find((a) => a.id === body.account_id)?.name ?? body.create?.name ?? null);
+      return true;
     } catch (err) {
-      setError(err.message);
+      if (err.field === 'account_mismatch') setMismatch({ message: err.message, body });
+      else setError(err.message);
     } finally {
       setBusy(false);
     }
@@ -118,7 +117,10 @@ function AccountCard({ batch, accounts, people, onConfirmed, pickOther = false }
         return setError(err.message);
       }
     }
-    await confirm({ create: { ...fields, person_id: personId } });
+    // Someone new came off this statement: check them in People first (D399), then back here for the rows.
+    if ((await confirm({ create: { ...fields, person_id: personId } })) && addingPerson) {
+      navigate(`/settings?${new URLSearchParams({ tab: 'people', person: String(personId), check: '1', back: `/import?open=${batch.id}` })}`);
+    }
   };
 
   return (
@@ -161,12 +163,12 @@ function AccountCard({ batch, accounts, people, onConfirmed, pickOther = false }
                     <Select
                       value={pickedId}
                       onChange={(e) => setPickedId(e.target.value)}
-                      options={accountChoices(accounts)}
+                      options={[blankChoice('Pick one…'), ...accountChoices(accounts)]}
                     />
                   </Field>
                 </div>
                 <div className="pb-0.5">
-                  <Button onClick={() => confirm({ account_id: Number(pickedId) })} disabled={busy}>
+                  <Button variant="quiet" onClick={() => confirm({ account_id: Number(pickedId) })} disabled={busy || !pickedId}>
                     Use this account
                   </Button>
                 </div>
@@ -174,7 +176,7 @@ function AccountCard({ batch, accounts, people, onConfirmed, pickOther = false }
               </>
             )}
             <div className="pb-0.5">
-              <Button variant={accounts.length > 0 ? 'quiet' : 'primary'} onClick={() => setMode('create')} disabled={busy}>
+              <Button onClick={() => setMode('create')} disabled={busy}>
                 {batch.detected_account_name ? `Create “${batch.detected_account_name}”` : 'Create a new account'}
               </Button>
             </div>
@@ -229,6 +231,14 @@ function AccountCard({ batch, accounts, people, onConfirmed, pickOther = false }
         </>
       )}
 
+      {mismatch && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <p className="text-sm text-spend">{mismatch.message}</p>
+          <Button variant="quiet" onClick={() => confirm({ ...mismatch.body, force: true })} disabled={busy}>
+            Attach anyway
+          </Button>
+        </div>
+      )}
       {error && <p className="mt-3 text-sm text-spend">{error}</p>}
     </div>
   );

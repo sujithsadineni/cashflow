@@ -1,6 +1,6 @@
 import { useCallback, useContext, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, useReducedMotion } from 'motion/react';
 import { api, maskName } from '../../../api';
 import { useApi } from '../../../hooks/use-api';
@@ -13,6 +13,7 @@ import { PaneActionSlot } from '../pane-action';
 import { PersonPoster } from './PersonPoster';
 import { PersonDetail } from './PersonDetail';
 import { Rise } from './motion-bits';
+import { Button } from '../../ui/Form';
 
 /**
  * Settings → People (D302), the same split view as Accounts and Loans: the
@@ -40,6 +41,10 @@ export function PeoplePane({ people, accounts, onChange }) {
   const req = useApi(ids ? `people-profiles:${ids}` : null, () => Promise.all(people.map((p) => api.personProfile(p.id))), { tags: ['transactions'] });
   const profiles = new Map((req.loading ? [] : req.data ?? []).map((p) => [p.person.id, p]));
 
+  const navigate = useNavigate();
+  // Sent here by Import after a statement added someone new (D399): check them, then go back to it.
+  const returnTo = params.get('back');
+  const checking = params.get('check') === '1' && returnTo?.startsWith('/') && !returnTo.startsWith('//');
   const chosenId = Number(params.get('person')) || null;
   const chosen = people.find((p) => p.id === chosenId) ?? null;
   const selected = chosen ?? people[0] ?? null;
@@ -126,6 +131,16 @@ export function PeoplePane({ people, accounts, onChange }) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ type: 'spring', bounce: 0, duration: 0.3 }}
         >
+          {checking && selected && mode !== 'add' && (
+            <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-warn/40 bg-raised p-4">
+              <p className="min-w-0 flex-1 text-sm text-ink">
+                New from a statement: <span className="font-medium">{maskName(selected.name)}</span>, as it printed them.
+                Check their name, edit anything that's wrong, then go back to the statement. Their address and
+                other details fill in as their statements are approved.
+              </p>
+              <Button onClick={() => leave(() => navigate(returnTo))}>Back to the statement</Button>
+            </div>
+          )}
           {mode === 'add' || selected ? (
             <PersonDetail
               person={mode === 'add' ? null : selected}

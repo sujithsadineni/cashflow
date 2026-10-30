@@ -106,17 +106,28 @@ export async function extractStatementFromPdfLocally(buffer, categoryNames, pass
     ok: true,
     account: result.account,
     statement: { ...result.statement, ...dates, promos: extractPromos(pages) },
-    rows: result.rows.map((r) => ({
-      posted_date: r.posted_date,
-      description: redactPan(r.description),
-      merchant: redactPan(r.merchant),
-      amount_cents: r.amount_cents,
-      txn_type: r.txn_type,
-      suggested_category: categoryNames.includes(r.suggested_category) ? r.suggested_category : null,
-      confidence: r.confidence,
-      raw_text: r.raw_text,
-    })),
+    rows: result.rows.map((r) => stagedRowFrom(r, categoryNames)),
     report,
+  };
+}
+
+/**
+ * A reader's row as Import stages it. Who spent it on a shared card (the
+ * section it printed under, and that card's ending: D344) is kept, or a
+ * co-owner's and a member's rows all land on the owner and nobody is proposed.
+ */
+export function stagedRowFrom(r, categoryNames) {
+  return {
+    posted_date: r.posted_date,
+    description: redactPan(r.description),
+    merchant: redactPan(r.merchant),
+    amount_cents: r.amount_cents,
+    txn_type: r.txn_type,
+    suggested_category: categoryNames.includes(r.suggested_category) ? r.suggested_category : null,
+    confidence: r.confidence,
+    raw_text: r.raw_text,
+    spender_name: r.spender_name ?? null,
+    card_ending: r.card_ending ?? null,
   };
 }
 

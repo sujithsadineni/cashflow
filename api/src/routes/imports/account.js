@@ -78,9 +78,13 @@ router.post('/:id/account', validate(accountConfirmSchema), async (req, res, nex
         detail: { name: rows[0].name, source: 'statement_detection', import_batch_id: id },
       });
     } else {
-      const { rows } = await query('SELECT id, name, mask FROM account WHERE id = $1', [accountId]);
+      const { rows } = await query('SELECT id, name, mask, issuer, account_type FROM account WHERE id = $1', [accountId]);
       if (rows.length === 0) {
         return res.status(400).json({ error: 'That account does not exist', field: 'account_id' });
+      }
+      const mismatch = statementMismatch(batch, rows[0]);
+      if (mismatch && !req.body.force) {
+        return res.status(409).json({ error: mismatch, field: 'account_mismatch' });
       }
       accountName = rows[0].name;
       accountMask = rows[0].mask;
@@ -158,4 +162,26 @@ async function csvRowsFor(batch, accountId) {
     if (amount !== r.amount_cents || type !== r.txn_type) changed.push({ id: r.id, amount_cents: amount, txn_type: type });
   }
   return changed;
+}
+
+const kindOf = (type) => (type === 'CREDIT_CARD' ? 'card' : type ? 'bank' : null);
+const issuerKey = (s) => (s ?? '').toLowerCase().replace(/\b(bank|usa|n\.?a\.?|inc|corp(oration)?|co|of|the)\b/g, '').replace(/[^a-z]/g, '');
+
+/**
+ * Why a statement doesn't look like it belongs on this account, or null: a
+ * bank statement on a card (or the other way round), or a statement from one
+ * bank on another bank's account. Attaching to the wrong account is the worst
+ * failure an importer can have; only an explicit "attach anyway" overrides it.
+ */
+export function statementMismatch(batch, account) {
+  const printed = [batch.detected_issuer, batch.detected_account_type === 'CREDIT_CARD' ? 'card' : batch.detected_account_type ? 'account' : null].filter(Boolean).join(' ');
+  const statementKind = kindOf(batch.detected_account_type);
+  const accountKind = kindOf(account.account_type);
+  if (statementKind && accountKind && statementKind !== accountKind) {
+    return `This is a ${printed} statement, and ${account.name} is a ${accountKind === 'card' ? 'credit card' : 'bank account'}.`;
+  }
+  if (batch.detected_issuer && account.issuer && issuerKey(batch.detected_issuer) !== issuerKey(account.issuer)) {
+    return `This statement is from ${batch.detected_issuer}, and ${account.name} is ${account.issuer}'s.`;
+  }
+  return null;
 }
