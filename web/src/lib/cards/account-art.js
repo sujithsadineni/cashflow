@@ -5,6 +5,7 @@
  */
 
 import { bankBrandFor } from './bankBrands';
+import { cardProductFor, productBackground } from './card-products';
 import bofaLogo from '../../assets/bank-logos/bofa.png';
 import chaseLogo from '../../assets/bank-logos/chase.png';
 import sofiLogo from '../../assets/bank-logos/sofi.png';
@@ -15,6 +16,8 @@ export function accountArt(account) {
   if (account.image_path) {
     return { style: { backgroundImage: `url(/api/account-images/${account.image_path.split('/').pop()})`, backgroundSize: 'cover', backgroundPosition: 'center' }, logo: null };
   }
+  const product = !account.color ? cardProductFor(account) : null;
+  if (product) return { style: productBackground(product), logo: null };
   const brand = bankBrandFor(account.issuer);
   if (brand) return { style: { background: `linear-gradient(155deg, ${brand.primary} 0%, ${brand.secondary} 100%)` }, logo: BRAND_LOGOS[brand.key] ?? null };
   const c = account.color ?? '#3A3A3C';

@@ -20,6 +20,7 @@ import { changesBetween } from '../core/changes.js';
 import { validate, accountCreateSchema, accountUpdateSchema, accountBalanceSchema } from '../core/validate.js';
 import { randomCardColor } from '../money/card-palette.js';
 import { isKnownBank } from '../merchants/known-banks.js';
+import { cardProductFor } from '../../../web/src/lib/cards/card-products.js';
 import { MAX_IMAGE_BYTES, isValidImage } from '../core/uploads.js';
 import { spendSql } from '../money/spend.js';
 import { cardHistory } from '../statements/card-history.js';
@@ -358,7 +359,9 @@ accountsRouter.post('/', validate(accountCreateSchema), async (req, res, next) =
     // applied and later fought with; a credit card, or an account at
     // any bank we don't recognize, keeps getting a random color same
     // as always.
-    const skipRandomColor = account_type !== 'CREDIT_CARD' && isKnownBank(issuer);
+    // A known card product draws its own face (D403), so it gets no random colour either.
+    const skipRandomColor = (account_type !== 'CREDIT_CARD' && isKnownBank(issuer))
+      || Boolean(cardProductFor({ account_type, issuer, name }));
     const resolvedColor = orNull(color) ?? (skipRandomColor ? null : randomCardColor());
 
     const { rows } = await query(

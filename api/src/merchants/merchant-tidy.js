@@ -21,6 +21,7 @@
 import { learnMerchants } from './merchant-learning.js';
 import { matchMerchant } from '../review/merchant-review.js';
 import { learnCities, nameFromLine, knownAs } from './line-name.js';
+import { directoryEntryFor } from './directory.js';
 
 /** Review's reason for a name read off the line; the approval looks for it to name the rest. */
 export const LINE_REASON = 'Read from the statement line';
@@ -29,7 +30,8 @@ const LINE_TYPES = new Set(['purchase', 'refund']);
 /** What an unnamed row's line reads as: the household's own name for it, or the line's. */
 export function lineName(r, cities, canonical) {
   if (r.merchant || !LINE_TYPES.has(r.txn_type) || r.amount_cents === 0) return null;
-  const read = nameFromLine(r.description, cities);
+  // A national brand the app already knows (D401) before a guess at the line's words.
+  const read = directoryEntryFor(null, r.description)?.merchant ?? nameFromLine(r.description, cities);
   return read ? knownAs(read, canonical) ?? read : null;
 }
 

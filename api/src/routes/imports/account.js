@@ -10,6 +10,7 @@ import { audit } from '../../core/audit.js';
 import { validate, accountConfirmSchema } from '../../core/validate.js';
 import { randomCardColor } from '../../money/card-palette.js';
 import { isKnownBank } from '../../merchants/known-banks.js';
+import { cardProductFor } from '../../../../web/src/lib/cards/card-products.js';
 import { upsertStatement, relocateStatementFile, REPO_ROOT } from './shared.js';
 import { parseStatementCsv, BANK_TYPES } from '../../parse/csv.js';
 import { inflowType } from '../../review/inflow-type.js';
@@ -57,7 +58,9 @@ router.post('/:id/account', validate(accountConfirmSchema), async (req, res, nex
       // checking/savings account at a bank we recognize gets its color
       // from the real brand (frontend, see bankBrands.js) rather than
       // the random palette, so `color` is left NULL here instead.
-      const skipRandomColor = create.account_type !== 'CREDIT_CARD' && isKnownBank(detectedIssuer);
+      const skipRandomColor = (create.account_type !== 'CREDIT_CARD' && isKnownBank(detectedIssuer))
+        // A known card product draws its own face (D403): no random colour to hide it.
+        || Boolean(cardProductFor({ account_type: create.account_type, issuer: detectedIssuer, name: create.name }));
 
       // One transaction: the people a shared statement brings, the account, who's on it and its limit.
       const created = await withTransaction(async (client) => {

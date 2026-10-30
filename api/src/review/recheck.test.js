@@ -190,3 +190,11 @@ test("Zolve taking back a pending return is a refund that is money out, and isn'
     merchant: null, description: 'Reversal Transaction [Pending Credit Transaction- POS Signature Return]', category_name: 'Refund' };
   assert.equal(recheck([row]).filter((f) => f.check_kind === 'type_sign').length, 0);
 });
+
+test('interest and a bank\'s own charges with no category are suggested where the readers file them (D402)', async () => {
+  const { interestCategory } = await import('./recheck.js');
+  assert.equal(interestCategory({ txn_type: 'interest', amount_cents: -1234 }), 'Interest');
+  assert.equal(interestCategory({ txn_type: 'interest', amount_cents: 42 }), 'Interest Earned');
+  assert.equal(interestCategory({ txn_type: 'fee', amount_cents: -500, description: 'LATE FEE' }), 'Bank Fees');
+  assert.equal(interestCategory({ txn_type: 'purchase', amount_cents: -500 }), null);
+});

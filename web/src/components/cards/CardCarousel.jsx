@@ -7,6 +7,7 @@ import { backLimit, aprText, otherAprs, earnedLine } from '../../lib/cards/utili
 import { planLine } from '../../lib/cards/plans';
 import { sharedPeople } from '../../lib/accounts/members';
 import { bankBrandFor } from '../../lib/cards/bankBrands';
+import { cardProductFor, productBackground } from '../../lib/cards/card-products';
 import bofaLogo from '../../assets/bank-logos/bofa.png';
 import chaseLogo from '../../assets/bank-logos/chase.png';
 import sofiLogo from '../../assets/bank-logos/sofi.png';
@@ -132,6 +133,10 @@ const LEGIBLE_TEXT_SHADOW = { textShadow: '0 1px 3px rgba(0,0,0,0.9), 0 0 12px r
 // The color/brand gradient alone, no photo — shared by the front (when
 // there's no uploaded image) and the back (which never shows the front
 // photo, since a real card's back isn't a second copy of its face).
+// Type on a drawn face: white on the usual dark gradient, near-black on a light product (Apple Card, Gold).
+const LIGHT_INK = { base: 'text-white', soft: 'text-white/70', faint: 'text-white/55', number: 'text-white/95', mark: 'text-white/85' };
+const DARK_INK = { base: 'text-black/85', soft: 'text-black/60', faint: 'text-black/45', number: 'text-black/80', mark: 'text-black/70' };
+
 function gradientBackground(account, brand) {
   return brand
     ? { background: `linear-gradient(155deg, ${brand.primary} 0%, ${brand.secondary} 100%)` }
@@ -147,6 +152,9 @@ export function CardFace({ account }) {
   // this account has its own color or photo (the existing customize
   // picker), that always wins; this never overrides a choice you made.
   const brand = !credit && !hasImage && !account.color ? bankBrandFor(account.issuer) : null;
+  // A known card product drawn in its own colours (D403), on the same terms: a photo or a colour you chose wins.
+  const product = credit && !hasImage && !account.color ? cardProductFor(account) : null;
+  const ink = product?.light ? DARK_INK : LIGHT_INK;
 
   const background = hasImage
     ? {
@@ -154,7 +162,7 @@ export function CardFace({ account }) {
         backgroundSize: 'cover',
         backgroundPosition: 'center',
       }
-    : gradientBackground(account, brand);
+    : product ? productBackground(product) : gradientBackground(account, brand);
 
   const numberGroups = account.mask
     ? ['••••', '••••', '••••', account.mask]
@@ -169,7 +177,7 @@ export function CardFace({ account }) {
     // regardless of how the parent's height gets computed — a flex
     // h-full + justify-between combination previously let the bottom
     // row drift into the rounded corner and get clipped.
-    <div className="relative h-56 w-full max-w-96 overflow-hidden rounded-2xl text-white shadow-md" style={background}>
+    <div className={`relative h-56 w-full max-w-96 overflow-hidden rounded-2xl shadow-md ${hasImage ? 'text-white' : ink.base}`} style={background}>
       {hasImage ? (
         <>
           {/* A real, solid dark bar — not just a soft gradient — so
@@ -196,14 +204,14 @@ export function CardFace({ account }) {
                   bank this is -- repeating its name here would be the
                   same fact twice. Only accounts without a mark (an
                   issuer we don't recognize) still get the plain text. */}
-              {account.issuer && !brand && <div className="text-xs text-white/70">{account.issuer}</div>}
+              {account.issuer && !brand && <div className={`text-xs ${ink.soft}`}>{account.issuer}</div>}
             </div>
             <div>
               {credit ? <ChipIcon /> : brand ? <BrandMark brandKey={brand.key} /> : <BankMark />}
             </div>
           </div>
 
-          <div className="absolute inset-x-6 bottom-20 font-mono text-lg font-bold tracking-[0.15em] text-white/95 tnum">
+          <div className={`absolute inset-x-6 bottom-20 font-mono text-lg font-bold tracking-[0.15em] tnum ${ink.number}`}>
             {numberGroups.join('  ')}
           </div>
 
@@ -212,13 +220,14 @@ export function CardFace({ account }) {
               <div className="truncate text-sm font-bold uppercase tracking-wide">
                 {holderName}
               </div>
-              <div className="mt-0.5 truncate text-[10px] uppercase tracking-wider text-white/55">
+              <div className={`mt-0.5 truncate text-[10px] uppercase tracking-wider ${ink.faint}`}>
                 {credit ? 'Credit card' : account.account_type === 'SAVINGS' ? 'Savings account' : 'Checking account'}
               </div>
             </div>
-            <div className="flex shrink-0 items-center gap-3 text-white/85">
-              {shared && <SharedBadge people={shared} size={20} onDark />}
-              {credit && <ContactlessIcon />}
+            <div className={`flex shrink-0 items-center gap-3 ${ink.mark}`}>
+              {shared && <SharedBadge people={shared} size={20} onDark={!product?.light} />}
+              {credit && !product && <ContactlessIcon />}
+              {product && <span className="text-sm font-bold italic tracking-wider">{product.network}</span>}
             </div>
           </div>
         </>

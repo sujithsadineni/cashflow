@@ -18,6 +18,7 @@
 
 import { inflowType } from './inflow-type.js';
 import { keywordCategory, STRONG } from '../parse/categories/keyword-category.js';
+import { refinedFeeCategory } from '../money/fees.js';
 
 export const ZELLE_TXN_TYPE = { INTERNAL: 'transfer', SENT: 'purchase', RECEIVED: 'deposit' };
 
@@ -226,7 +227,7 @@ export function recheck(rows) {
       // Its merchant is the shop it was returned to, so history would say Shopping.
       if (t.category_name !== 'Cashback') add('daily_cash_category', 'category', 'Cashback', 'Daily Cash taken back belongs with Cashback');
     } else if (!t.category_name) {
-      add('category_missing', 'category', catHistory?.value, 'No category was set');
+      add('category_missing', 'category', catHistory?.value ?? interestCategory(t), 'No category was set');
     } else if (strongKeyword(t)) {
       // The line says what it is: a history learned from one wrong row doesn't outvote it, and a row
       // already filed that way isn't second-guessed by history either (D337).
@@ -236,6 +237,17 @@ export function recheck(rows) {
     }
   }
   return out;
+}
+
+/**
+ * Where interest and a bank's own charges go when nothing says otherwise (D402): what a
+ * card charged under Interest, interest paid to the household under Interest Earned, a
+ * bank fee under Bank Fees (the readers' own rule, D342). Null for anything else.
+ */
+export function interestCategory(t) {
+  if (t.txn_type === 'interest') return t.amount_cents > 0 ? 'Interest Earned' : 'Interest';
+  if (t.txn_type === 'fee') return refinedFeeCategory({ ...t, suggested_category: null });
+  return null;
 }
 
 /**

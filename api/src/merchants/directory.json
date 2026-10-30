@@ -1,0 +1,1278 @@
+[
+ {
+  "merchant": "7-Eleven",
+  "domain": "7-eleven.com",
+  "keys": [],
+  "category": "Fuel",
+  "fallback": "Fuel"
+ },
+ {
+  "merchant": "Adidas",
+  "domain": "adidas.com",
+  "keys": [
+   "adidas"
+  ],
+  "category": "Clothing",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Airbnb",
+  "domain": "airbnb.com",
+  "keys": [
+   "airbnb"
+  ],
+  "category": "Travel",
+  "fallback": "Travel"
+ },
+ {
+  "merchant": "Aldi",
+  "domain": "aldi.us",
+  "keys": [
+   "aldi"
+  ],
+  "category": "Groceries",
+  "fallback": "Groceries"
+ },
+ {
+  "merchant": "Allstate",
+  "domain": "www.allstate.com",
+  "keys": [
+   "allstate"
+  ],
+  "category": "Insurance",
+  "fallback": "Insurance"
+ },
+ {
+  "merchant": "Amazon",
+  "domain": "amazon.com",
+  "keys": [
+   "amazon"
+  ],
+  "category": "Shopping",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Amc",
+  "domain": "amctheatres.com",
+  "keys": [],
+  "category": "Entertainment",
+  "fallback": "Entertainment"
+ },
+ {
+  "merchant": "American Eagle",
+  "domain": "ae.com",
+  "keys": [
+   "american eagle"
+  ],
+  "category": "Clothing",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Amtrak",
+  "domain": "amtrak.com",
+  "keys": [
+   "amtrak"
+  ],
+  "category": "Travel",
+  "fallback": "Travel"
+ },
+ {
+  "merchant": "Anthropic",
+  "domain": "anthropic.com",
+  "keys": [],
+  "category": "Subscriptions",
+  "fallback": "Subscriptions"
+ },
+ {
+  "merchant": "Apple",
+  "domain": "apple.com",
+  "keys": [
+   "apple"
+  ],
+  "category": "Shopping",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Auntie Anne's",
+  "domain": "auntieannes.com",
+  "keys": [
+   "auntie annes"
+  ],
+  "category": "Dining",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "Autozone",
+  "domain": "autozone.com",
+  "keys": [
+   "autozone"
+  ],
+  "category": "Auto Maintenance",
+  "fallback": "Transport"
+ },
+ {
+  "merchant": "Banana Republic",
+  "domain": "bananarepublic.gap.com",
+  "keys": [],
+  "category": "Clothing",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Barclaycard",
+  "domain": "barclaycardus.com",
+  "keys": [
+   "barclaycard"
+  ],
+  "category": null,
+  "fallback": null
+ },
+ {
+  "merchant": "Bath & Body Works",
+  "domain": "bathandbodyworks.com",
+  "keys": [],
+  "category": "Personal Care",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Ben & Jerry's",
+  "domain": "benjerry.com",
+  "keys": [],
+  "category": "Dining",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "Best Buy",
+  "domain": "bestbuy.com",
+  "keys": [],
+  "category": "Shopping",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Bilt",
+  "domain": "biltrewards.com",
+  "keys": [
+   "bilt"
+  ],
+  "category": null,
+  "fallback": null
+ },
+ {
+  "merchant": "BP",
+  "domain": "www.bp.com",
+  "keys": [],
+  "category": "Fuel",
+  "fallback": "Fuel"
+ },
+ {
+  "merchant": "Breeze Airways",
+  "domain": "flybreeze.com",
+  "keys": [],
+  "category": "Travel",
+  "fallback": "Travel"
+ },
+ {
+  "merchant": "Buffalo Wild Wings",
+  "domain": "buffalowildwings.com",
+  "keys": [
+   "buffalo wild"
+  ],
+  "category": "Dining",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "Burger King",
+  "domain": "bk.com",
+  "keys": [
+   "burger king"
+  ],
+  "category": "Fast Food",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "Burlington",
+  "domain": "burlington.com",
+  "keys": [
+   "burlington"
+  ],
+  "category": "Clothing",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Calvin Klein",
+  "domain": "calvinklein.com",
+  "keys": [
+   "calvin klein"
+  ],
+  "category": "Clothing",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Charlotte Russe",
+  "domain": "charlotterusse.com",
+  "keys": [],
+  "category": "Clothing",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Chevron",
+  "domain": "chevron.com",
+  "keys": [],
+  "category": "Fuel",
+  "fallback": "Fuel"
+ },
+ {
+  "merchant": "Chick-fil-A",
+  "domain": "chick-fil-a.com",
+  "keys": [],
+  "category": "Fast Food",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "Chipotle",
+  "domain": "chipotle.com",
+  "keys": [],
+  "category": "Fast Food",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "Cicis Pizza",
+  "domain": "cicis.com",
+  "keys": [
+   "cicis pizza"
+  ],
+  "category": "Fast Food",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "Cinemark",
+  "domain": "cinemark.com",
+  "keys": [],
+  "category": "Entertainment",
+  "fallback": "Entertainment"
+ },
+ {
+  "merchant": "Cinnabon",
+  "domain": "cinnabon.com",
+  "keys": [],
+  "category": "Dining",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "Circle K",
+  "domain": "circlek.com",
+  "keys": [],
+  "category": "Fuel",
+  "fallback": "Fuel"
+ },
+ {
+  "merchant": "Claire's",
+  "domain": "claires.com",
+  "keys": [],
+  "category": "Shopping",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Cocacola",
+  "domain": "coca-cola.com",
+  "keys": [
+   "coca cola"
+  ],
+  "category": "Dining",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "Cold Stone Creamery",
+  "domain": "coldstonecreamery.com",
+  "keys": [
+   "cold stone"
+  ],
+  "category": "Dining",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "Comfort Inn",
+  "domain": "comfortinn.com",
+  "keys": [],
+  "category": "Travel",
+  "fallback": "Travel"
+ },
+ {
+  "merchant": "Costco",
+  "domain": "costco.com",
+  "keys": [],
+  "category": "Costco",
+  "fallback": "Groceries"
+ },
+ {
+  "merchant": "Culver's",
+  "domain": "culvers.com",
+  "keys": [],
+  "category": "Fast Food",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "CVS",
+  "domain": "cvs.com",
+  "keys": [],
+  "category": "Health",
+  "fallback": "Health"
+ },
+ {
+  "merchant": "Dairy Queen",
+  "domain": "dairyqueen.com",
+  "keys": [
+   "dairy queen"
+  ],
+  "category": "Fast Food",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "Dave & Buster's",
+  "domain": "daveandbusters.com",
+  "keys": [
+   "dave busters"
+  ],
+  "category": "Entertainment",
+  "fallback": "Entertainment"
+ },
+ {
+  "merchant": "Denny's",
+  "domain": "dennys.com",
+  "keys": [],
+  "category": "Dining",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "Ding Tea",
+  "domain": "dingtea.com",
+  "keys": [],
+  "category": "Dining",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "Discount Tire",
+  "domain": "discounttire.com",
+  "keys": [
+   "discount tire"
+  ],
+  "category": "Auto Maintenance",
+  "fallback": "Transport"
+ },
+ {
+  "merchant": "Disney+",
+  "domain": "disneyplus.com",
+  "keys": [
+   "disney"
+  ],
+  "category": "Subscriptions",
+  "fallback": "Subscriptions"
+ },
+ {
+  "merchant": "Dollar General",
+  "domain": "dollargeneral.com",
+  "keys": [
+   "dollar general"
+  ],
+  "category": "Shopping",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Dollar Tree",
+  "domain": "dollartree.com",
+  "keys": [
+   "dollartree"
+  ],
+  "category": "Shopping",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Domino's",
+  "domain": "dominos.com",
+  "keys": [
+   "dominos"
+  ],
+  "category": "Fast Food",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "DoorDash",
+  "domain": "doordash.com",
+  "keys": [
+   "doordash"
+  ],
+  "category": "Dining",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "Dunkin",
+  "domain": "dunkindonuts.com",
+  "keys": [
+   "dunkin"
+  ],
+  "category": "Dining",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "Emirates",
+  "domain": "emirates.com",
+  "keys": [
+   "emirates"
+  ],
+  "category": "Travel",
+  "fallback": "Travel"
+ },
+ {
+  "merchant": "ExxonMobil",
+  "domain": "exxonmobil.com",
+  "keys": [
+   "exxonmobil"
+  ],
+  "category": "Fuel",
+  "fallback": "Fuel"
+ },
+ {
+  "merchant": "Five Below",
+  "domain": "fivebelow.com",
+  "keys": [
+   "five below"
+  ],
+  "category": "Shopping",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Fossil",
+  "domain": "fossil.com",
+  "keys": [
+   "fossil"
+  ],
+  "category": "Shopping",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Francesca's",
+  "domain": "francescas.com",
+  "keys": [],
+  "category": "Clothing",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Frontier Airlines",
+  "domain": "flyfrontier.com",
+  "keys": [],
+  "category": "Travel",
+  "fallback": "Travel"
+ },
+ {
+  "merchant": "Gap",
+  "domain": "gap.com",
+  "keys": [],
+  "category": "Clothing",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "GEICO",
+  "domain": "geico.com",
+  "keys": [
+   "geico"
+  ],
+  "category": "Insurance",
+  "fallback": "Insurance"
+ },
+ {
+  "merchant": "GitHub",
+  "domain": "github.com",
+  "keys": [],
+  "category": "Subscriptions",
+  "fallback": "Subscriptions"
+ },
+ {
+  "merchant": "Gong Cha",
+  "domain": "gong-cha.com",
+  "keys": [],
+  "category": "Dining",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "Google",
+  "domain": "google.com",
+  "keys": [],
+  "category": "Subscriptions",
+  "fallback": "Subscriptions"
+ },
+ {
+  "merchant": "Groupon",
+  "domain": "groupon.com",
+  "keys": [
+   "groupon"
+  ],
+  "category": "Shopping",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Grubhub",
+  "domain": "grubhub.com",
+  "keys": [],
+  "category": "Dining",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "Guess",
+  "domain": "guess.com",
+  "keys": [
+   "guess"
+  ],
+  "category": "Clothing",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "H Mart",
+  "domain": "hmart.com",
+  "keys": [],
+  "category": "Groceries",
+  "fallback": "Groceries"
+ },
+ {
+  "merchant": "H&M",
+  "domain": "hm.com",
+  "keys": [],
+  "category": "Clothing",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Haagen-Dazs",
+  "domain": "haagendazs.us",
+  "keys": [
+   "haagen dazs"
+  ],
+  "category": "Dining",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "HBO Max",
+  "domain": "max.com",
+  "keys": [
+   "hbomax"
+  ],
+  "category": "Subscriptions",
+  "fallback": "Subscriptions"
+ },
+ {
+  "merchant": "HomeGoods",
+  "domain": "homegoods.com",
+  "keys": [
+   "homegoods"
+  ],
+  "category": "Home",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Hulu",
+  "domain": "hulu.com",
+  "keys": [
+   "hulu"
+  ],
+  "category": "Subscriptions",
+  "fallback": "Subscriptions"
+ },
+ {
+  "merchant": "Hurley",
+  "domain": "hurley.com",
+  "keys": [],
+  "category": "Clothing",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "IKEA",
+  "domain": "ikea.com",
+  "keys": [
+   "ikea"
+  ],
+  "category": null,
+  "fallback": null
+ },
+ {
+  "merchant": "Instacart",
+  "domain": "instacart.com",
+  "keys": [],
+  "category": "Groceries",
+  "fallback": "Groceries"
+ },
+ {
+  "merchant": "J.Crew",
+  "domain": "jcrew.com",
+  "keys": [],
+  "category": "Clothing",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Jamba",
+  "domain": "jamba.com",
+  "keys": [
+   "jamba"
+  ],
+  "category": "Dining",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "JCPenney",
+  "domain": "jcpenney.com",
+  "keys": [
+   "jcpenney"
+  ],
+  "category": "Clothing",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Jimmy John's",
+  "domain": "jimmyjohns.com",
+  "keys": [],
+  "category": "Fast Food",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "Kate Spade",
+  "domain": "katespade.com",
+  "keys": [
+   "kate spade"
+  ],
+  "category": "Shopping",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Kohl's",
+  "domain": "kohls.com",
+  "keys": [
+   "kohls"
+  ],
+  "category": "Clothing",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Krispy Kreme",
+  "domain": "krispykreme.com",
+  "keys": [
+   "krispy kreme"
+  ],
+  "category": "Dining",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "Kroger",
+  "domain": "kroger.com",
+  "keys": [
+   "kroger"
+  ],
+  "category": "Groceries",
+  "fallback": "Groceries"
+ },
+ {
+  "merchant": "Kung Fu Tea",
+  "domain": "kungfutea.com",
+  "keys": [],
+  "category": "Dining",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "Lemonade Insurance",
+  "domain": "lemonade.com",
+  "keys": [],
+  "category": "Insurance",
+  "fallback": "Insurance"
+ },
+ {
+  "merchant": "Levi's",
+  "domain": "levi.com",
+  "keys": [
+   "levis"
+  ],
+  "category": "Clothing",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Logitech",
+  "domain": "logitech.com",
+  "keys": [],
+  "category": "Shopping",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Lyft",
+  "domain": "lyft.com",
+  "keys": [],
+  "category": "Transport",
+  "fallback": "Transport"
+ },
+ {
+  "merchant": "MAC Cosmetics",
+  "domain": "maccosmetics.com",
+  "keys": [],
+  "category": "Personal Care",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Macy's",
+  "domain": "macys.com",
+  "keys": [
+   "macys"
+  ],
+  "category": "Clothing",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Marshalls",
+  "domain": "marshalls.com",
+  "keys": [
+   "marshalls"
+  ],
+  "category": "Clothing",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "McDonald's",
+  "domain": "mcdonalds.com",
+  "keys": [],
+  "category": "Fast Food",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "Michael Kors",
+  "domain": "michaelkors.com",
+  "keys": [
+   "michael kors"
+  ],
+  "category": "Shopping",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Miniso",
+  "domain": "miniso.com",
+  "keys": [],
+  "category": "Shopping",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Mint Mobile",
+  "domain": "mintmobile.com",
+  "keys": [],
+  "category": "Phone",
+  "fallback": "Utilities"
+ },
+ {
+  "merchant": "Netflix",
+  "domain": "netflix.com",
+  "keys": [],
+  "category": "Entertainment",
+  "fallback": "Entertainment"
+ },
+ {
+  "merchant": "Nike",
+  "domain": "nike.com",
+  "keys": [],
+  "category": "Clothing",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Office Depot",
+  "domain": "officedepot.com",
+  "keys": [],
+  "category": "Shopping",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Omio",
+  "domain": "omio.com",
+  "keys": [],
+  "category": "Travel",
+  "fallback": "Travel"
+ },
+ {
+  "merchant": "OpenAI",
+  "domain": "openai.com",
+  "keys": [
+   "openai"
+  ],
+  "category": "Subscriptions",
+  "fallback": "Subscriptions"
+ },
+ {
+  "merchant": "Origins",
+  "domain": "origins.com",
+  "keys": [],
+  "category": "Personal Care",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Panda Express",
+  "domain": "pandaexpress.com",
+  "keys": [],
+  "category": "Fast Food",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "Panera Bread",
+  "domain": "panerabread.com",
+  "keys": [
+   "panera bread"
+  ],
+  "category": "Dining",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "Paris Baguette",
+  "domain": "parisbaguette.com",
+  "keys": [
+   "paris baguette"
+  ],
+  "category": "Dining",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "ParkWhiz",
+  "domain": "parkwhiz.com",
+  "keys": [],
+  "category": "Parking & Tolls",
+  "fallback": "Transport"
+ },
+ {
+  "merchant": "Peacock",
+  "domain": "peacocktv.com",
+  "keys": [],
+  "category": "Subscriptions",
+  "fallback": "Subscriptions"
+ },
+ {
+  "merchant": "Pei Wei",
+  "domain": "peiwei.com",
+  "keys": [
+   "pei wei"
+  ],
+  "category": "Dining",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "Perfumania",
+  "domain": "perfumania.com",
+  "keys": [],
+  "category": "Personal Care",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Planet Fitness",
+  "domain": "planetfitness.com",
+  "keys": [
+   "planet fitness"
+  ],
+  "category": "Fitness",
+  "fallback": "Health"
+ },
+ {
+  "merchant": "PlayStation",
+  "domain": "playstation.com",
+  "keys": [
+   "playstation"
+  ],
+  "category": "Entertainment",
+  "fallback": "Entertainment"
+ },
+ {
+  "merchant": "Popeyes",
+  "domain": "popeyes.com",
+  "keys": [
+   "popeyes"
+  ],
+  "category": "Fast Food",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "Progressive",
+  "domain": "progressive.com",
+  "keys": [
+   "progressive"
+  ],
+  "category": "Insurance",
+  "fallback": "Insurance"
+ },
+ {
+  "merchant": "Raising Cane's",
+  "domain": "raisingcanes.com",
+  "keys": [],
+  "category": "Fast Food",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "Ralph Lauren",
+  "domain": "ralphlauren.com",
+  "keys": [],
+  "category": "Clothing",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Regal",
+  "domain": "regmovies.com",
+  "keys": [
+   "regal"
+  ],
+  "category": "Entertainment",
+  "fallback": "Entertainment"
+ },
+ {
+  "merchant": "Robinhood",
+  "domain": "robinhood.com",
+  "keys": [
+   "robinhood"
+  ],
+  "category": null,
+  "fallback": null
+ },
+ {
+  "merchant": "Ross",
+  "domain": "rossstores.com",
+  "keys": [
+   "ross"
+  ],
+  "category": "Clothing",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Sam's Club",
+  "domain": "samsclub.com",
+  "keys": [],
+  "category": "Groceries",
+  "fallback": "Groceries"
+ },
+ {
+  "merchant": "Samsung",
+  "domain": "samsung.com",
+  "keys": [
+   "samsung"
+  ],
+  "category": "Shopping",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Sephora",
+  "domain": "sephora.com",
+  "keys": [
+   "sephora"
+  ],
+  "category": "Personal Care",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Shake Shack",
+  "domain": "shakeshack.com",
+  "keys": [
+   "shake shack"
+  ],
+  "category": "Fast Food",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "SHEIN",
+  "domain": "shein.com",
+  "keys": [
+   "shein"
+  ],
+  "category": "Clothing",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Shell",
+  "domain": "shell.com",
+  "keys": [
+   "shell"
+  ],
+  "category": "Fuel",
+  "fallback": "Fuel"
+ },
+ {
+  "merchant": "Southwest Airlines",
+  "domain": "southwest.com",
+  "keys": [],
+  "category": "Travel",
+  "fallback": "Travel"
+ },
+ {
+  "merchant": "Spectrum",
+  "domain": "spectrum.com",
+  "keys": [],
+  "category": "Utilities",
+  "fallback": "Utilities"
+ },
+ {
+  "merchant": "Sport Clips",
+  "domain": "sportclips.com",
+  "keys": [],
+  "category": "Personal Care",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Starbucks",
+  "domain": "starbucks.com",
+  "keys": [
+   "starbucks"
+  ],
+  "category": "Dining",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "State Farm",
+  "domain": "statefarm.com",
+  "keys": [
+   "state farm"
+  ],
+  "category": "Insurance",
+  "fallback": "Insurance"
+ },
+ {
+  "merchant": "Subway",
+  "domain": "subway.com",
+  "keys": [],
+  "category": "Fast Food",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "T-Mobile",
+  "domain": "t-mobile.com",
+  "keys": [
+   "tmobile"
+  ],
+  "category": "Phone",
+  "fallback": "Utilities"
+ },
+ {
+  "merchant": "Taco Bell",
+  "domain": "tacobell.com",
+  "keys": [],
+  "category": "Fast Food",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "Target",
+  "domain": "target.com",
+  "keys": [],
+  "category": "Shopping",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Temu",
+  "domain": "temu.com",
+  "keys": [
+   "temu"
+  ],
+  "category": "Shopping",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Tesla",
+  "domain": "tesla.com",
+  "keys": [
+   "tesla"
+  ],
+  "category": "EV Charging",
+  "fallback": "Transport"
+ },
+ {
+  "merchant": "The Cheesecake Factory",
+  "domain": "thecheesecakefactory.com",
+  "keys": [],
+  "category": "Dining",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "The Home Depot",
+  "domain": "homedepot.com",
+  "keys": [
+   "home depot"
+  ],
+  "category": "Home",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "The UPS Store",
+  "domain": "theupsstore.com",
+  "keys": [],
+  "category": "Shopping",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "TJ Maxx",
+  "domain": "tjmaxx.tjx.com",
+  "keys": [
+   "tjmaxx"
+  ],
+  "category": "Clothing",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Tommy Hilfiger",
+  "domain": "tommy.com",
+  "keys": [],
+  "category": "Clothing",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Too Good To Go",
+  "domain": "toogoodtogo.com",
+  "keys": [
+   "too good"
+  ],
+  "category": "Dining",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "Topgolf",
+  "domain": "topgolf.com",
+  "keys": [
+   "top golf"
+  ],
+  "category": "Entertainment",
+  "fallback": "Entertainment"
+ },
+ {
+  "merchant": "Total Wine & More",
+  "domain": "totalwine.com",
+  "keys": [
+   "total wine"
+  ],
+  "category": "Shopping",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Tous Les Jours",
+  "domain": "tlj.com",
+  "keys": [
+   "tous les"
+  ],
+  "category": "Dining",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "Trader Joe's",
+  "domain": "traderjoes.com",
+  "keys": [
+   "trader joe"
+  ],
+  "category": "Groceries",
+  "fallback": "Groceries"
+ },
+ {
+  "merchant": "U-Haul",
+  "domain": "uhaul.com",
+  "keys": [],
+  "category": "Transport",
+  "fallback": "Transport"
+ },
+ {
+  "merchant": "Uber",
+  "domain": "uber.com",
+  "keys": [],
+  "category": "Transport",
+  "fallback": "Transport"
+ },
+ {
+  "merchant": "Uber Eats",
+  "domain": "ubereats.com",
+  "keys": [],
+  "category": "Dining",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "Under Armour",
+  "domain": "underarmour.com",
+  "keys": [
+   "under armour"
+  ],
+  "category": "Clothing",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "United",
+  "domain": "united.com",
+  "keys": [],
+  "category": "Travel",
+  "fallback": "Travel"
+ },
+ {
+  "merchant": "USPS",
+  "domain": "usps.com",
+  "keys": [
+   "usps"
+  ],
+  "category": null,
+  "fallback": null
+ },
+ {
+  "merchant": "Victoria's Secret",
+  "domain": "victoriassecret.com",
+  "keys": [
+   "victoria secret",
+   "victorias secret"
+  ],
+  "category": "Clothing",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Walgreens",
+  "domain": "walgreens.com",
+  "keys": [],
+  "category": "Health",
+  "fallback": "Health"
+ },
+ {
+  "merchant": "Walmart",
+  "domain": "walmart.com",
+  "keys": [
+   "wal mart",
+   "walmart"
+  ],
+  "category": "Groceries",
+  "fallback": "Groceries"
+ },
+ {
+  "merchant": "Wells Fargo",
+  "domain": "wellsfargo.com",
+  "keys": [
+   "wells fargo"
+  ],
+  "category": null,
+  "fallback": null
+ },
+ {
+  "merchant": "Whole Foods Market",
+  "domain": "wholefoodsmarket.com",
+  "keys": [],
+  "category": "Groceries",
+  "fallback": "Groceries"
+ },
+ {
+  "merchant": "Williams-Sonoma",
+  "domain": "williams-sonoma.com",
+  "keys": [],
+  "category": "Home",
+  "fallback": "Shopping"
+ },
+ {
+  "merchant": "Wingstop",
+  "domain": "wingstop.com",
+  "keys": [
+   "wingstop"
+  ],
+  "category": "Fast Food",
+  "fallback": "Dining"
+ },
+ {
+  "merchant": "Xfinity",
+  "domain": "xfinity.com",
+  "keys": [],
+  "category": "Utilities",
+  "fallback": "Utilities"
+ },
+ {
+  "merchant": "YouTube",
+  "domain": "youtube.com",
+  "keys": [],
+  "category": "Subscriptions",
+  "fallback": "Subscriptions"
+ }
+]

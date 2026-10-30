@@ -22,6 +22,7 @@ import { robinhoodCategoryFor } from '../../parse/categories/robinhood-category.
 import { suggestHistoricalCategories, suggestHistoricalTypes } from '../../review/historical-category.js';
 import { verificationCategoryId } from '../transaction-review.js';
 import { learnMerchants } from '../../merchants/merchant-learning.js';
+import { directoryMerchant, directoryCategory } from '../../merchants/directory.js';
 import { keywordCategory, certainCategory } from '../../parse/categories/keyword-category.js';
 import { inflowType } from '../../review/inflow-type.js';
 import { balanceTransferDepositFor } from '../../parse/categories/balance-transfer-deposit.js';
@@ -247,7 +248,15 @@ router.post('/:id/parse', async (req, res, next) => {
         `SELECT id, description, merchant FROM transaction WHERE merchant IS NOT NULL AND txn_type = ANY($1)`,
         [[...NAMEABLE]]
       );
-      for (const [i, { merchant }] of learnMerchants(history, unnamed)) unnamed[i].merchant = merchant;
+      const learned = learnMerchants(history, unnamed);
+      for (const [i, { merchant }] of learned) unnamed[i].merchant = merchant;
+      // A national brand a new install already knows (D401): names what history couldn't,
+      // and spells a brand-list guess the way the brand does ("CVS", not "Cvs").
+      for (const [i, row] of unnamed.entries()) {
+        if (row.merchant && learned.get(i)?.how !== 'brand') continue;
+        const listed = directoryMerchant(row.description);
+        if (listed) row.merchant = listed.merchant;
+      }
     }
     const unnamedMoves = parsed.rows.filter((r) => !r.merchant && MOVING.has(r.txn_type));
     if (unnamedMoves.length > 0) {
@@ -308,6 +317,13 @@ router.post('/:id/parse', async (req, res, next) => {
       for (const [index, category] of historical) {
         stillBlank[index].suggested_category = category;
       }
+    }
+
+    // A brand's own category from the directory (D401), when the household's history had none:
+    // the household's version of it if they keep one ("Fast Food"), else the default ("Dining").
+    for (const row of parsed.rows) {
+      if (row.suggested_category || (row.txn_type ?? 'purchase') !== 'purchase') continue;
+      row.suggested_category = directoryCategory(row.merchant, categoryNames, row.description);
     }
 
     // Last resort (D188): plain words in the line ("GRILL", "BIRYANI", "PARKING").

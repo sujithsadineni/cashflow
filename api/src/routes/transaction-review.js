@@ -12,6 +12,7 @@ import { audit } from '../core/audit.js';
 import { validate, transactionReviewApproveSchema, transactionReviewBatchSchema, transactionReviewUndoSchema, TXN_TYPE_VALUES } from '../core/validate.js';
 import { typeOptions, buildCategoryIndex, categoryOptions } from '../review/review-options.js';
 import { recheck, signFixes } from '../review/recheck.js';
+import { directoryEntryFor, directoryCategory } from '../merchants/directory.js';
 import { statementTally } from '../statements/tally.js';
 import { statementHint } from '../statements/statement-hints.js';
 import { findVerification, VERIFICATION_CATEGORY } from '../matching/verification.js';
@@ -107,6 +108,22 @@ async function statementsWithRows() {
   }));
 }
 
+/**
+ * A row with no category that history can't place yet (a new install has none) takes its
+ * brand's category from the merchant directory (D401, D402), as a suggestion like any other.
+ */
+function withDirectory(findings, rows, categoryNames) {
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  return findings.map((f) => {
+    if (f.check_kind !== 'category_missing' || f.suggested_value) return f;
+    const t = byId.get(f.transaction_id);
+    if ((t.txn_type ?? 'purchase') !== 'purchase') return f;
+    const entry = directoryEntryFor(t.merchant, t.description);
+    const category = directoryCategory(t.merchant, categoryNames, t.description);
+    return category ? { ...f, suggested_value: category, reason: `${t.merchant ?? entry.merchant} is usually ${category}` } : f;
+  });
+}
+
 export async function runRecheck() {
   const { rows } = await query(
     `SELECT t.id, t.account_id, a.account_type, to_char(t.posted_date, 'YYYY-MM-DD') AS posted_date,
@@ -125,7 +142,7 @@ export async function runRecheck() {
   );
   const statements = await statementsWithRows();
   const findings = [
-    ...recheck(rows),
+    ...withDirectory(recheck(rows), rows, (await query('SELECT name FROM category')).rows.map((c) => c.name)),
     ...signFixes(statements.filter((s) => s.tally.status === 'mismatch').map((s) => ({ diff_cents: s.tally.diff_cents, rows: s.rows }))),
   ];
 

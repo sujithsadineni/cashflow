@@ -30,7 +30,7 @@ import { brandAtStart, brandName } from '../../../web/src/lib/transactions/merch
 const isZelle = (s) => /zelle/i.test(s ?? '');
 
 // Payment-processor prefixes that sit in front of the real name.
-const PREFIX = /^(tst\*|sq \*|sq\*|sp \*|sp |aplpay |apple pay |paypal \*|pp\*|py \*|ctlp\*|dd \*|dd\*|bps\*|in \*|pos |pos debit |purchase )/i;
+export const PREFIX = /^(tst\*|sq \*|sq\*|sp \*|sp |aplpay |apple pay |paypal \*|pp\*|py \*|ctlp\*|dd \*|dd\*|bps\*|in \*|pos |pos debit |purchase )/i;
 
 // First words that say nothing about who was paid.
 const GENERIC = new Set([
