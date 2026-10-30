@@ -42,6 +42,8 @@ function announceApproval(notify, result) {
 }
 
 const NEW_PERSON = 'new';
+// An inline text action, as Import's own links are drawn: ink, a rule-coloured underline that darkens on hover.
+const LINK = 'text-ink underline decoration-rule-str underline-offset-2 hover:decoration-ink';
 const TYPE_WORD = { CHECKING: 'Checking', SAVINGS: 'Savings', CREDIT_CARD: 'Card', INVESTMENT: 'Investment' };
 
 /**
@@ -126,6 +128,15 @@ function AccountCard({ batch, rows = [], accounts, people, onConfirmed, pickOthe
   };
 
   const set = (key) => (e) => setForm({ ...form, [key]: e.target.value });
+
+  // Why Create & attach can't go yet, said beside it rather than a button that just won't press.
+  const createBlocked = shared === null ? 'Say whether it\'s shared first'
+    : shared && !membersReady ? 'One primary, and a different person for each name'
+    : !shared && addingPerson && !form.new_person.trim() ? 'Give the new person a name'
+    : !form.account_type ? 'Pick its type'
+    : !form.name.trim() ? 'Give the account a name'
+    : !limitReady ? 'Enter the limit, or skip it'
+    : null;
 
   const create = async () => {
     const { new_person, ...fields } = form;
@@ -235,31 +246,39 @@ function AccountCard({ batch, rows = [], accounts, people, onConfirmed, pickOthe
             </div>
           )}
           {shared && (
-            <div className="mb-4 space-y-3">
-              <p className="text-sm text-muted">Who each name is, and their part. The primary owns it; payments stay with them.</p>
-              {members.map((m, i) => (
-                <div key={m.printed} className="grid items-end gap-3 sm:grid-cols-3">
-                  <Field label={`${maskName(m.printed)}${m.card_ending ? ` ··${m.card_ending}` : ''}`}>
-                    <Select
-                      value={m.person}
-                      onChange={setMember(i, 'person')}
-                      options={[...personChoices(people), { ...blankChoice('Someone new…'), value: NEW_PERSON }]}
-                    />
-                  </Field>
-                  {m.person === NEW_PERSON ? (
-                    <Field label="Their name" hint="Added to People">
-                      <TextInput value={m.new_person} onChange={setMember(i, 'new_person')} placeholder="Alex Morgan" />
-                    </Field>
-                  ) : <span />}
-                  <Field label="Part">
-                    <Select value={m.role} onChange={setMember(i, 'role')} options={ROLE_CHOICES} />
-                  </Field>
-                </div>
-              ))}
-              {!membersReady && <p className="text-sm text-faint">One primary, and a different person for each name.</p>}
+            <div className="mb-4">
+              <p className="mb-3 text-sm text-muted">Who each name is, and their part. The primary owns it; payments stay with them.</p>
+              <div className="space-y-3">
+                {members.map((m, i) => (
+                  <div key={m.printed} className="rounded-lg border border-rule p-3">
+                    <p className="mb-2 flex flex-wrap items-baseline gap-x-2 px-1 text-sm">
+                      <span className="font-medium text-ink">{maskName(m.printed)}</span>
+                      {m.card_ending && <span className="tnum text-muted">··{m.card_ending}</span>}
+                      <span className="text-faint">as the statement prints them</span>
+                    </p>
+                    <div className="grid items-start gap-3 sm:grid-cols-2">
+                      <Field label="Who is this?">
+                        <Select
+                          value={m.person}
+                          onChange={setMember(i, 'person')}
+                          options={[...personChoices(people), { ...blankChoice('Someone new…'), value: NEW_PERSON }]}
+                        />
+                      </Field>
+                      <Field label="Part">
+                        <Select value={m.role} onChange={setMember(i, 'role')} options={ROLE_CHOICES} />
+                      </Field>
+                      {m.person === NEW_PERSON && (
+                        <Field label="Their name in People" className="sm:col-span-2">
+                          <TextInput value={m.new_person} onChange={setMember(i, 'new_person')} placeholder="Alex Morgan" />
+                        </Field>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid items-start gap-4 sm:grid-cols-2">
             {!shared && (
               <Field label="Whose account is it?">
                 <Select
@@ -291,31 +310,34 @@ function AccountCard({ batch, rows = [], accounts, people, onConfirmed, pickOthe
               <TextInput value={form.mask} onChange={set('mask')} inputMode="numeric" maxLength={4} className="tnum" />
             </Field>
             {needsLimit && !limit.skipped && (
-              <Field label="Credit limit" hint="Not printed on this statement">
-                <div className="flex items-center gap-2">
+              <div>
+                <Field label="Credit limit">
                   <TextInput value={limit.text} onChange={(e) => setLimit({ text: e.target.value, skipped: false })} inputMode="decimal" placeholder="5,000" className="tnum" />
-                  <Button variant="quiet" onClick={() => setLimit({ text: '', skipped: true })}>Skip, add it later</Button>
-                </div>
-              </Field>
+                </Field>
+                <p className="mt-1 px-3 text-xs text-faint">
+                  Not printed on this statement ·{' '}
+                  <button type="button" className={LINK} onClick={() => setLimit({ text: '', skipped: true })}>Skip, add it later</button>
+                </p>
+              </div>
             )}
           </div>
           {needsLimit && limit.skipped && (
             <p className="mt-2 text-sm text-faint">
               No limit for now; add it any time in Settings → Accounts.{' '}
-              <button type="button" className="underline" onClick={() => setLimit({ text: '', skipped: false })}>Add it now</button>
+              <button type="button" className={LINK} onClick={() => setLimit({ text: '', skipped: false })}>Add it now</button>
             </p>
           )}
           <div className="mt-4 flex items-center gap-2">
             <Button
               onClick={create}
-              disabled={busy || !form.name.trim() || !form.account_type || shared === null || !limitReady
-                || (shared ? !membersReady : addingPerson && !form.new_person.trim())}
+              disabled={busy || Boolean(createBlocked)}
             >
               {busy ? 'Creating…' : 'Create & attach'}
             </Button>
             <Button variant="quiet" onClick={() => setMode('resolve')} disabled={busy}>
               Back
             </Button>
+            {!busy && createBlocked && <span className="text-sm text-faint">{createBlocked}</span>}
           </div>
         </>
       )}
