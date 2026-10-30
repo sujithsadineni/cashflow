@@ -313,7 +313,8 @@ function StatementSplit({ batch, renderCard }) {
   const wide = useWide('(min-width: 1280px)');
   const pdf = batch.file_type === 'PDF';
   // Refreshed with the imports: right after an upload the pages come first and the rows' lines once read.
-  const layout = useApi(wide && pdf ? `pages:${batch.id}` : null, () => api.imports.pages(batch.id), { tags: ['imports'] });
+  // Keyed by the upload too (D404): after a wiped database the same id is another statement.
+  const layout = useApi(wide && pdf ? `pages:${batch.id}:${batch.uploaded_at}` : null, () => api.imports.pages(batch.id), { tags: ['imports'] });
   // The printed lines, for the drawn page when the real ones can't be shown.
   const staged = useApi(wide ? `staged:${batch.id}` : null, () => api.imports.staged(batch.id), { tags: ['imports'] });
   const [focusId, setFocusId] = useState(null);

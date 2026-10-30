@@ -27,6 +27,9 @@ export { router as pagesRouter };
 
 const RENDER_SCALE = 2; // about 144 dpi: sharp on a retina screen at the pane's width
 const openDoc = (buffer, password) => getDocument({ data: new Uint8Array(buffer), isEvalSupported: false, useSystemFonts: true, standardFontDataUrl: STANDARD_FONT_DATA_URL, password });
+/** A file's fingerprint, short: enough to tell any two statements apart. */
+export const pageVersion = (fileHash) => (fileHash ?? '').slice(0, 16);
+
 const locked = (err) => err?.name === 'PasswordException';
 /** Open it; a password-protected one with a remembered password (D336). */
 async function open(buffer) {
@@ -44,7 +47,8 @@ async function open(buffer) {
 }
 
 // A rendered page takes a few hundred ms; the dialog asks for the same pages again on every
-// open and replay. Kept for the most recent few, by batch and page, in memory only.
+// open and replay. Kept for the most recent few, in memory only, by the file's own fingerprint
+// and page: an import's id names a different file after a wiped or restored database (D404).
 const pictures = new Map();
 const remember = (key, png) => {
   pictures.set(key, png);
@@ -52,11 +56,11 @@ const remember = (key, png) => {
 };
 
 async function storedPdf(id) {
-  const { rows: [batch] } = await query('SELECT id, stored_path, file_type FROM import_batch WHERE id = $1', [id]);
+  const { rows: [batch] } = await query('SELECT id, stored_path, file_type, file_hash FROM import_batch WHERE id = $1', [id]);
   if (!batch) return { status: 404 };
   if (batch.file_type !== 'PDF') return { unavailable: 'csv' };
   try {
-    return { buffer: await readFile(path.resolve(REPO_ROOT, batch.stored_path)) };
+    return { buffer: await readFile(path.resolve(REPO_ROOT, batch.stored_path)), version: pageVersion(batch.file_hash) };
   } catch {
     return { unavailable: 'missing' };
   }
@@ -98,6 +102,9 @@ router.get('/:id/pages', async (req, res, next) => {
     const located = locateRows(pages, rows);
     res.json({
       available: true,
+      // Which file these pages are: the page pictures' address carries it, so no cache can
+      // show another statement's pages under a reused import id (D404).
+      version: file.version,
       pages: pages.map(({ n, width, height }) => ({ n, width, height })),
       rows: located,
       // The heading each row was printed under (D360), so the reading says what it's reading.
@@ -116,7 +123,10 @@ router.get('/:id/pages/:n.png', async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const n = Number(req.params.n);
-    const key = `${id}:${n}`;
+    // The fingerprint from the database, so a page already drawn needs no file read.
+    const { rows: [batch] } = await query('SELECT file_type, file_hash FROM import_batch WHERE id = $1', [id]);
+    if (!batch || batch.file_type !== 'PDF') return res.status(404).json({ error: 'No page to show' });
+    const key = `${pageVersion(batch.file_hash)}:${n}`;
     let png = pictures.get(key);
     if (!png) {
       const file = await storedPdf(id);

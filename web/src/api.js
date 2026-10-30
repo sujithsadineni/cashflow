@@ -193,7 +193,8 @@ export const api = {
     // A line kept out for good, or brought back (D335).
     // The stored PDF's pages and where each row's line sits on them (D335); a page as a picture.
     pages:       (id) => request(`/imports/${id}/pages`, { timeoutMs: 60_000 }),
-    pageImage:   (id, n) => `/api/imports/${id}/pages/${n}.png`,
+    // `version` is the file's fingerprint (D404): a reused import id never shows another file's cached page.
+    pageImage:   (id, n, version) => `/api/imports/${id}/pages/${n}.png${version ? `?v=${version}` : ''}`,
     skipStaged:  (id, stagedId) => post(`/imports/${id}/staged/${stagedId}/skip`),
     restoreStaged: (id, stagedId) => post(`/imports/${id}/staged/${stagedId}/restore`),
     remove:      (id) => request(`/imports/${id}`, { method: 'DELETE' }),

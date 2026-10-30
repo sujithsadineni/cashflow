@@ -79,7 +79,7 @@ export function StatementPages({ batchId, layout, focusId, progress, focusFigure
         {layout.pages.map((p) => (
           <div key={p.n} data-page={p.n} className="relative overflow-hidden rounded-md bg-white shadow-[0_1px_2px_rgb(0_0_0/0.1),0_8px_24px_-14px_rgb(0_0_0/0.45)]"
             style={{ aspectRatio: `${p.width} / ${p.height}` }}>
-            <img src={api.imports.pageImage(batchId, p.n)} alt={`Page ${p.n}`} loading={p.n <= 2 ? 'eager' : 'lazy'} draggable={false}
+            <img src={api.imports.pageImage(batchId, p.n, layout.version)} alt={`Page ${p.n}`} loading={p.n <= 2 ? 'eager' : 'lazy'} draggable={false}
               onLoad={() => setLoaded((s) => new Set(s).add(p.n))}
               className={`absolute inset-0 size-full select-none transition-[filter] duration-300 ${privacyMode ? 'blur-md' : ''} ${loaded.has(p.n) ? '' : 'opacity-0'}`} />
             {!loaded.has(p.n) && <span className="absolute inset-0 animate-pulse bg-neutral-100" aria-hidden="true" />}
