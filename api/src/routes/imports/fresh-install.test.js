@@ -15,6 +15,7 @@ import assert from 'node:assert/strict';
 // Stored paths read data/statements/…, resolved two folders above STATEMENTS_DIR.
 const statements = mkdtempSync(path.join(tmpdir(), 'cashflow-fresh-'));
 process.env.STATEMENTS_DIR = path.join(statements, 'data', 'statements');
+process.env.ACCOUNT_IMAGES_DIR = path.join(statements, 'data', 'account-images');
 let base, server, query;
 
 before(async () => {
@@ -117,4 +118,14 @@ test('a shared statement needs one primary and a different person per name', { s
     { printed_name: 'A', role: 'co_owner', person_id: owner.id }, { printed_name: 'B', role: 'co_owner', new_person: 'Bo Sample' }] } });
   assert.equal(noPrimary.status, 400);
   assert.equal((await query(`SELECT count(*)::int AS n FROM person WHERE name = 'Bo Sample'`)).rows[0].n, 0, 'nothing half-made');
+});
+
+test('a known card can wear its picture from the app\'s card art, like an upload (D407)', { skip }, async () => {
+  const owner = (await query(`SELECT id FROM person WHERE name = 'Sam Sample'`)).rows[0];
+  const card = await (await send('POST', '/accounts', { person_id: owner.id, name: 'Apple Card', issuer: 'Goldman Sachs Bank USA', account_type: 'CREDIT_CARD', mask: '7777' })).json();
+  const res = await send('POST', `/accounts/${card.id}/card-art`, { key: 'apple-card' });
+  assert.equal(res.status, 201);
+  assert.match((await res.json()).image_path, new RegExp(`^data/account-images/${card.id}-[0-9a-f]{16}\\.png$`));
+  assert.equal((await query(`SELECT detail->>'card_art' AS art FROM audit_log WHERE action = 'account.image_updated' AND entity_id = $1`, [card.id])).rows[0].art, 'apple-card');
+  assert.equal((await send('POST', `/accounts/${card.id}/card-art`, { key: 'no-such-card' })).status, 400);
 });

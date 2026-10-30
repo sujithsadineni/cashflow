@@ -8,6 +8,7 @@ import { sharedPeople } from '../../lib/accounts/members';
 import { bankBrandFor } from '../../lib/cards/bankBrands';
 import { cardProductFor, productBackground } from '../../lib/cards/card-products';
 import { ContactlessIcon, NetworkMark, SharedMark } from './CardMarks';
+import { CardArtPick } from './CardArtPick';
 import bofaLogo from '../../assets/bank-logos/bofa.png';
 import chaseLogo from '../../assets/bank-logos/chase.png';
 import sofiLogo from '../../assets/bank-logos/sofi.png';
@@ -540,6 +541,20 @@ export function CardCarousel({ accounts, selectedId, onSelect, onChanged, facts,
     }
   };
 
+  const applyCardArt = async (product) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.accounts.cardArt(selected.id, product.key);
+      onChanged();
+      notify(selected.name, { name: 'photo.added' });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const removeImage = async () => {
     if (!selected) return;
     setError(null);
@@ -625,6 +640,9 @@ export function CardCarousel({ accounts, selectedId, onSelect, onChanged, facts,
             Upload a photo of the card
           </button>
           <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={uploadImage} className="hidden" />
+          {!selected.image_path && cardProductFor(selected)?.art && (
+            <CardArtPick product={cardProductFor(selected)} onPick={() => applyCardArt(cardProductFor(selected))} />
+          )}
           {selected.image_path && (
             <button
               onClick={removeImage}

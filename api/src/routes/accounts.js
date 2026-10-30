@@ -17,10 +17,10 @@ import multer from 'multer';
 import { query } from '../core/db.js';
 import { audit } from '../core/audit.js';
 import { changesBetween } from '../core/changes.js';
-import { validate, accountCreateSchema, accountUpdateSchema, accountBalanceSchema } from '../core/validate.js';
+import { validate, accountCreateSchema, accountUpdateSchema, accountBalanceSchema, cardArtSchema } from '../core/validate.js';
 import { randomCardColor } from '../money/card-palette.js';
 import { isKnownBank } from '../merchants/known-banks.js';
-import { cardProductFor } from '../../../web/src/lib/cards/card-products.js';
+import { cardProductFor, cardArtFor } from '../../../web/src/lib/cards/card-products.js';
 import { MAX_IMAGE_BYTES, isValidImage } from '../core/uploads.js';
 import { spendSql } from '../money/spend.js';
 import { cardHistory } from '../statements/card-history.js';
@@ -33,7 +33,8 @@ export const accountsRouter = Router();
 /** Empty strings from a form mean "not provided", not "set to ''". */
 const orNull = (value) => (value === '' || value === undefined ? null : value);
 
-const IMAGES_DIR = path.resolve(
+// ACCOUNT_IMAGES_DIR overrides it, as STATEMENTS_DIR does for statements: route tests write to a temp folder.
+const IMAGES_DIR = process.env.ACCOUNT_IMAGES_DIR || path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '../../../data/account-images'
 );
@@ -500,7 +501,7 @@ accountsRouter.post('/:id/deactivate', async (req, res, next) => {
  * route: validate, store under the account's id+hash, swap out
  * whatever image was there before, audit.
  */
-async function saveAccountImage(id, buffer, ext) {
+async function saveAccountImage(id, buffer, ext, detail = {}) {
   if (!isValidImage(buffer, ext)) {
     return { ok: false, error: 'Only PNG, JPEG or WebP images are accepted' };
   }
@@ -531,11 +532,30 @@ async function saveAccountImage(id, buffer, ext) {
     action: 'account.image_updated',
     entityType: 'account',
     entityId: id,
-    detail: { size_bytes: buffer.length },
+    detail: { size_bytes: buffer.length, ...detail },
   });
 
   return { ok: true, account: rows[0] };
 }
+
+/**
+ * A card's picture from the app's card art (D407): the issuer's own picture of a known
+ * product, copied in as the account's image, the same as an upload (so removing it, and
+ * everything else an image does, works the same). Only ever on request: the person picks it.
+ */
+const CARD_ART_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../web/public/card-art');
+accountsRouter.post('/:id/card-art', validate(cardArtSchema), async (req, res, next) => {
+  try {
+    const art = cardArtFor(req.body.key);
+    if (!art) return res.status(400).json({ error: 'No picture for that card', field: 'key' });
+    const buffer = await readFile(path.join(CARD_ART_DIR, art));
+    const result = await saveAccountImage(Number(req.params.id), buffer, '.png', { card_art: req.body.key });
+    if (!result.ok) return res.status(result.status ?? 400).json({ error: result.error, field: 'key' });
+    res.status(201).json(result.account);
+  } catch (err) {
+    next(err);
+  }
+});
 
 accountsRouter.post('/:id/image', upload.single('image'), async (req, res, next) => {
   try {

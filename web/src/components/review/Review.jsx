@@ -18,6 +18,8 @@ import { StatementNotes, NOTES_BOX } from './StatementNotes';
 import { statementNotes } from '../../lib/imports/statement-notes';
 import { holderName, personForHolder } from '../../lib/imports/holder-name';
 import { namesOnStatement, startingRole, ROLE_CHOICES } from '../../lib/imports/statement-names';
+import { cardProductFor } from '../../lib/cards/card-products';
+import { CardArtPick } from '../cards/CardArtPick';
 import { aprText } from '../../lib/cards/utilisation';
 import { useHeight } from '../../hooks/use-height';
 import { printedOrder, printedSections, sectionFigures } from '../../lib/imports/printed-order';
@@ -105,6 +107,9 @@ function AccountCard({ batch, rows = [], accounts, people, onConfirmed, pickOthe
   // A card whose statement prints no limit: asked once, here, or skipped for Settings later.
   const needsLimit = form.account_type === 'CREDIT_CARD' && batch.detected_summary?.credit_limit_cents == null;
   const [limit, setLimit] = useState({ text: '', skipped: false });
+  // A known card's own picture (D407), offered here and applied once the card exists, if picked.
+  const product = cardProductFor({ account_type: form.account_type, issuer: form.issuer, name: form.name });
+  const [usePicture, setUsePicture] = useState(false);
   const limitCents = needsLimit && !limit.skipped ? dollarsToCents(limit.text) : NaN;
   const limitReady = !needsLimit || limit.skipped || limitCents > 0;
   const [error, setError] = useState(null);
@@ -146,6 +151,7 @@ function AccountCard({ batch, rows = [], accounts, people, onConfirmed, pickOthe
         printed_name: m.printed, role: m.role, card_ending: m.card_ending,
         ...(m.person === NEW_PERSON ? { new_person: m.new_person.trim().replace(/\s+/g, ' ') } : { person_id: Number(m.person) }),
       })) } });
+      await applyPicture(res);
       if (res?.new_people?.length) {
         invalidate('reference');
         checkInPeople(res.new_people[0]);
@@ -165,7 +171,14 @@ function AccountCard({ batch, rows = [], accounts, people, onConfirmed, pickOthe
       }
     }
     // Someone new came off this statement: check them in People first (D399), then back here for the rows.
-    if ((await confirm({ create: { ...fields, person_id: personId, credit_limit_cents } })) && addingPerson) checkInPeople(personId);
+    const res = await confirm({ create: { ...fields, person_id: personId, credit_limit_cents } });
+    await applyPicture(res);
+    if (res && addingPerson) checkInPeople(personId);
+  };
+  // After the card exists: its picture, if picked. A failure here never undoes the card.
+  const applyPicture = async (res) => {
+    if (!usePicture || !product?.art || !res?.account_id) return;
+    await api.accounts.cardArt(res.account_id, product.key).catch(() => {});
   };
   const checkInPeople = (personId) =>
     navigate(`/settings?${new URLSearchParams({ tab: 'people', person: String(personId), check: '1', back: `/import?open=${batch.id}` })}`);
@@ -321,6 +334,12 @@ function AccountCard({ batch, rows = [], accounts, people, onConfirmed, pickOthe
               </div>
             )}
           </div>
+          {product?.art && (
+            <div className="mt-3 flex flex-wrap items-center gap-2 px-1">
+              <CardArtPick product={product} picked={usePicture} onPick={() => setUsePicture((u) => !u)} label="Use this card's picture" />
+              <span className="text-xs text-faint">or keep the drawn card; change it any time on Cards</span>
+            </div>
+          )}
           {needsLimit && limit.skipped && (
             <p className="mt-2 text-sm text-faint">
               No limit for now; add it any time in Settings → Accounts.{' '}

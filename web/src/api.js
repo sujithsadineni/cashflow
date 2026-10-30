@@ -143,6 +143,8 @@ export const api = {
       return request(`/accounts/${id}/image`, { method: 'POST', body: form });
     },
     removeImage: (id) => request(`/accounts/${id}/image`, { method: 'DELETE' }),
+    // The issuer's picture of a known card, by product key (D407).
+    cardArt: (id, key) => post(`/accounts/${id}/card-art`, { key }),
     statementMonths: (id) => request(`/accounts/${id}/statement-months`),
     summary: (id) => request(`/accounts/${id}/summary`),
     // The statement that closed in a month, or the newest (D347): the back of the card.

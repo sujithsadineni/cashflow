@@ -126,7 +126,7 @@ app.use('/api/pdf-passwords', pdfPasswordsRouter);
 // statement PDF, which is why this one directory is served directly.
 app.use(
   '/api/account-images',
-  express.static(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../data/account-images'))
+  express.static(process.env.ACCOUNT_IMAGES_DIR || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../data/account-images'))
 );
 // Same reasoning as account-images, for a contact's own photo.
 app.use(

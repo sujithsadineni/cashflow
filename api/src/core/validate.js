@@ -509,3 +509,6 @@ export const alertSnoozeSchema = z.object({
   kind: z.enum(['snooze', 'dismiss', 'paid']),
   days: z.coerce.number().int().min(1).max(90).optional(),
 }).refine((b) => b.kind !== 'snooze' || b.days, { message: 'How many days to snooze', path: ['days'] });
+
+/** Picking a card's picture from the app's card art (D407): the product's key. */
+export const cardArtSchema = z.object({ key: z.string().trim().min(1).max(40) }).strict();
