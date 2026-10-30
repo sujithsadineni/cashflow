@@ -2,12 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { animate, motion, useReducedMotion } from 'motion/react';
 import { useDesign } from '../../hooks/use-design';
 import { api, formatMoney, formatShortDate, maskName } from '../../api';
-import { SharedBadge } from '../ui/SharedBadge';
 import { backLimit, aprText, otherAprs, earnedLine } from '../../lib/cards/utilisation';
 import { planLine } from '../../lib/cards/plans';
 import { sharedPeople } from '../../lib/accounts/members';
 import { bankBrandFor } from '../../lib/cards/bankBrands';
 import { cardProductFor, productBackground } from '../../lib/cards/card-products';
+import { ContactlessIcon, NetworkMark, SharedMark } from './CardMarks';
 import bofaLogo from '../../assets/bank-logos/bofa.png';
 import chaseLogo from '../../assets/bank-logos/chase.png';
 import sofiLogo from '../../assets/bank-logos/sofi.png';
@@ -53,16 +53,6 @@ function ChipIcon() {
       <line x1="24" y1="0.5" x2="24" y2="25.5" stroke="#00000030" />
       <line x1="0.5" y1="8.5" x2="35.5" y2="8.5" stroke="#00000030" />
       <line x1="0.5" y1="17.5" x2="35.5" y2="17.5" stroke="#00000030" />
-    </svg>
-  );
-}
-
-function ContactlessIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M8 8a5 5 0 010 8" stroke="currentColor" strokeOpacity="0.85" strokeWidth="1.6" strokeLinecap="round" />
-      <path d="M11 5a9 9 0 010 14" stroke="currentColor" strokeOpacity="0.65" strokeWidth="1.6" strokeLinecap="round" />
-      <path d="M14 2a13 13 0 010 20" stroke="currentColor" strokeOpacity="0.45" strokeWidth="1.6" strokeLinecap="round" />
     </svg>
   );
 }
@@ -143,6 +133,15 @@ function gradientBackground(account, brand) {
     : { background: `linear-gradient(155deg, ${account.color ?? '#5A5A6B'} 0%, color-mix(in srgb, ${account.color ?? '#5A5A6B'} 65%, black) 100%)` };
 }
 
+/** The card number as four groups spread across the face; the last four are the account's. */
+function CardNumber({ groups, className = '', style }) {
+  return (
+    <div className={`absolute inset-x-6 flex justify-between font-mono font-bold tnum ${className}`} style={style}>
+      {groups.map((g, i) => <span key={i} className={i < 3 ? 'tracking-[0.12em]' : 'tracking-[0.08em]'}>{g}</span>)}
+    </div>
+  );
+}
+
 export function CardFace({ account }) {
   const hasImage = Boolean(account.image_path);
   const credit = isCard(account);
@@ -184,20 +183,18 @@ export function CardFace({ account }) {
               bold text reads against ANY photo, not only a dark one. */}
           <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/85 via-black/55 to-transparent" />
 
-          <div className="absolute inset-x-6 bottom-16 font-mono text-xl font-bold tracking-[0.15em] tnum" style={LEGIBLE_TEXT_SHADOW}>
-            {numberGroups.join('  ')}
-          </div>
+          {shared && <div className="absolute right-5 top-5"><SharedMark people={shared} /></div>}
 
-          <div className="absolute inset-x-6 bottom-6 flex items-end justify-between gap-3">
-            <div className="min-w-0 truncate text-base font-bold uppercase tracking-wide" style={LEGIBLE_TEXT_SHADOW}>
-              {holderName}
-            </div>
-            {shared && <SharedBadge people={shared} size={20} onDark />}
+          <CardNumber groups={numberGroups} className="bottom-16 text-xl" style={LEGIBLE_TEXT_SHADOW} />
+
+          <div className="absolute inset-x-6 bottom-5 text-base font-bold uppercase leading-tight tracking-wide line-clamp-2" style={LEGIBLE_TEXT_SHADOW}>
+            {holderName}
           </div>
         </>
       ) : (
         <>
-          <div className="absolute inset-x-6 top-6 flex items-start justify-between">
+          {/* Clear of the flip hint in the top-right corner. */}
+          <div className="absolute left-6 right-10 top-6 flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="truncate text-base font-medium">{account.name}</div>
               {/* A recognized bank's mark, top right, already says which
@@ -206,29 +203,27 @@ export function CardFace({ account }) {
                   issuer we don't recognize) still get the plain text. */}
               {account.issuer && !brand && <div className={`text-xs ${ink.soft}`}>{account.issuer}</div>}
             </div>
-            <div>
+            <div className={`flex shrink-0 items-center gap-2 ${ink.mark}`}>
+              {shared && <SharedMark people={shared} light={product?.light} />}
               {credit ? <ChipIcon /> : brand ? <BrandMark brandKey={brand.key} /> : <BankMark />}
+              <ContactlessIcon />
             </div>
           </div>
 
-          <div className={`absolute inset-x-6 bottom-20 font-mono text-lg font-bold tracking-[0.15em] tnum ${ink.number}`}>
-            {numberGroups.join('  ')}
-          </div>
+          {/* The four groups spread across the card, as they're embossed on a real one. */}
+          <CardNumber groups={numberGroups} className={`bottom-[4.75rem] text-xl ${ink.number}`} />
 
-          <div className="absolute inset-x-6 bottom-6 flex items-end justify-between gap-3">
-            <div className="min-w-0">
-              <div className="truncate text-sm font-bold uppercase tracking-wide">
+          <div className="absolute inset-x-6 bottom-5 flex items-end justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              {/* The whole name: two lines before it would ever be cut. */}
+              <div className="text-sm font-bold uppercase leading-tight tracking-wide line-clamp-2">
                 {holderName}
               </div>
               <div className={`mt-0.5 truncate text-[10px] uppercase tracking-wider ${ink.faint}`}>
                 {credit ? 'Credit card' : account.account_type === 'SAVINGS' ? 'Savings account' : 'Checking account'}
               </div>
             </div>
-            <div className={`flex shrink-0 items-center gap-3 ${ink.mark}`}>
-              {shared && <SharedBadge people={shared} size={20} onDark={!product?.light} />}
-              {credit && !product && <ContactlessIcon />}
-              {product && <span className="text-sm font-bold italic tracking-wider">{product.network}</span>}
-            </div>
+            {product && <div className="shrink-0"><NetworkMark network={product.network} light={product.light} /></div>}
           </div>
         </>
       )}
