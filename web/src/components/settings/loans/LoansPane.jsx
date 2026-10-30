@@ -9,6 +9,7 @@ import { useConfirm } from '../../../hooks/use-confirm';
 import { useDesign } from '../../../hooks/use-design';
 import { useWide } from '../../../hooks/use-wide';
 import { centsToInput } from '../../../lib/loans/loan-edit';
+import { installmentName } from '../../../lib/loans/loan-form';
 import { LoanScheduleDetail } from '../../loans/LoanScheduleDetail';
 import { PaneActionSlot } from '../pane-action';
 import { LoanList } from './LoanList';
@@ -97,7 +98,16 @@ export function LoansPane({ accounts, onChange }) {
   };
 
   // A suggested transfer opens as a new loan, filled in from its statement, to check before adding.
-  const track = (s) => startAdd({
+  // A loan paid from the bank every month (D419): its payments fill the form; the person adds the months.
+  const track = (s) => startAdd(s.kind === 'installment' ? {
+    name: installmentName(s),
+    lender: s.lender,
+    loan_type: s.loan_type,
+    start_date: s.start_date,
+    monthly_payment: centsToInput(s.monthly_payment_cents),
+    payment_account_id: String(s.payment_account_id),
+    current_balance: '',
+  } : {
     name: `${s.account_name} balance transfer`,
     lender: s.issuer ?? '',
     loan_type: 'balance_transfer',
@@ -111,7 +121,7 @@ export function LoansPane({ accounts, onChange }) {
     try {
       await api.loans.dismissSuggestion(s.key);
       suggestionsReq.setData((items) => (items ?? []).filter((x) => x.key !== s.key));
-      notify(`${s.account_name} won't be suggested again`, { name: 'loan.suggestion_hidden' });
+      notify(`${s.lender ?? s.account_name} won't be suggested again`, { name: 'loan.suggestion_hidden' });
     } catch (err) {
       notify(err.message, { name: 'error.hide' });
     } finally {

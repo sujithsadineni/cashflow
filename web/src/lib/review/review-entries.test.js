@@ -67,3 +67,12 @@ test('bulkApprovals: a type only goes on rows it fits; a category goes on all (D
   assert.deepEqual(bulkApprovals([out, back], 'category', 'Shopping'), { approve: [{ id: 2, value: 'Shopping' }, { id: 4, value: 'Shopping' }], skipped: 0 });
   assert.deepEqual(bulkApprovals([out, back], 'txn_type', undefined), { approve: [], skipped: 0 });
 });
+
+test('labels only goes by shop, the one with the most rows first (D418)', () => {
+  const f = (id, txn, merchant, date) => ({ id, transaction_id: txn, check_kind: 'category_missing', field: 'category', merchant, description: merchant.toUpperCase(), posted_date: date, amount_cents: -500 });
+  const order = entriesFrom([
+    f(1, 1, 'Tea House', '2026-03-01'), f(2, 2, 'Corner Market', '2026-02-01'),
+    f(3, 3, 'Corner Market', '2026-01-01'), f(4, 4, 'Bike Shop', '2026-04-01'),
+  ]).map((e) => e.id);
+  assert.deepEqual(order, [2, 3, 4, 1]);
+});

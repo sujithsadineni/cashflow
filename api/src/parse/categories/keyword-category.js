@@ -18,14 +18,25 @@ const RULES = [
   // "Church" only as a place, not an address: Duke Energy bills from S CHURCH ST.
   ['Gifts & Donations', /\b(temple|mosque|gurdwara|mandir|donation|charity)\b|\bchurch\b(?!\s+(st|rd|ave|street|road|dr|ln|blvd|hill)\b)/i],
   ['Subscriptions', /apple\.com\/bill|\b(netflix\.com|spotify|hulu|youtube premium|icloud|chatgpt|openai)\b/i],
-  ['Travel', /\b(flixbus|greyhound|amtrak|airlines?|airways|hotel|motel|marriott|hilton|hyatt|airbnb|expedia)\b/i],
+  ['Travel', /\b(flixbus|flix|greyhound|amtrak|airlines?|airways|hotel|motel|marriott|hilton|hyatt|airbnb|expedia|inn|suites|la quinta|days inn|booking\.com|six flags)\b/i],
+  // D417: generic words and large chains that read the same for any household, ahead of Dining's broad words.
+  ['EV Charging', /\b(chargepoint|evgo|electrify america|blink charging|blink|supercharger|ev ?charging|charging station)\b/i],
+  ['Education', /\b(university|univ|college|school|tuition|academy|parchment|coursera|udemy)\b/i],
+  ['Government', /\b(dmv|ncdmv|txdmv|dps|uscis|usps|passport|county|city of|state of|dept of|department of|court|tax collector|vehicle reg\w*|defensive driving)\b/i],
+  ['Personal Care', /\b(salon|nails?|threading|spa|barber\w*|beauty|cosmetics|great clips|sport clips|supercuts|ulta|sephora)\b/i],
+  ['Home', /\b(storage|home depot|lowe'?s|ikea|hardware|furniture|bed bath|homegoods|wayfair|serviceworks)\b/i],
+  ['Auto Maintenance', /\b(car ?wash|auto parts|autozone|o'?reilly|jiffy lube|valvoline|tires?|mechanic|oil change|auto repair|lkq)\b/i],
+  ['Utilities', /\b(energy|electric\w*|power co\w*|water|utilities|comcast|xfinity|spectrum|paymentus|duke)\b/i],
+  ['Phone', /\b(wireless|t-?mobile|verizon|at&t|visible|mint mobile|cricket|boost mobile|cell ?phone)\b/i],
+  ['Entertainment', /\b(cinema|theatre|theater|movies|amc|regal|bowl\w*|arcade|museum|zoo|aquarium|concert|ticketmaster|eventbrite|topgolf|jet ?ski)\b/i],
+  ['Rent', /\b(apartments?|leasing|property management|residential|rent pmts?|rentpay\w*)\b/i],
   // D342: chains, ahead of Dining's words ("chicken", "burgers") so a Chick-fil-A is fast food.
   ['Fast Food', /\b(mcdonald'?s|taco bell|wendy'?s|burger king|chick-fil-a|kfc|popeyes|subway|sonic drive|whataburger|jack in the box|sarku|domino'?s|pizza hut|papa john'?s|little caesars|cook out|waffle house|chipotle|five guys|in-n-out|raising cane'?s|arby'?s|dairy queen|panda express|shake shack|wingstop|jersey mike'?s|jimmy john'?s|qdoba|del taco|carl'?s jr|white castle|zaxby'?s|bojangles|culver'?s|cicis)\b/i],
   ['Clothing', /\b(ross stores|ross dress|tj ?maxx|marshalls|burlington|h&m|zara|old navy|uniqlo|puma|nike|adidas|forever 21|american eagle|guess|gap outlet|banana republic|levi'?s|skims|the north face|kohl'?s|macy'?s|nordstrom|dillard'?s|abercrombie|shoe palace|tx-anf)\b/i],
   ['Dining', /\b(restaur\w*|cafe|grill|kitchen|pizza\w*|tacos?|taqueria|burgers?|biryani|bakery|bagels?|coffee|espresso|tea|boba|sushi|ramen|pho|thai|thali|indian|chinese|mexican|wok|eats|diner|bbq|barbecue|soft serve|ice cream|creamery|gelato|deli|bistro|curry|dosa|wings|chicken|noodles?|dumplings?|donuts?|doughnuts?|cantina|brewing|brewery|steakhouse|smokehouse)\b/i],
-  ['Groceries', /\b(grocery|groceries|supermarket|market|fresh meat|halal meat|produce|farmers)\b/i],
-  ['Fuel', /\b(fuel|gas station|petro\w*|circle k|costco gas)\b/i],
-  ['Transport', /\b(transit|taxi|metrocard|bike share)\b/i],
+  ['Groceries', /\b(grocery|groceries|grocers?|supermarket|market|bazaa?r|fresh meat|halal meat|produce|farmers|foods|kroger|publix|aldi|lidl|safeway|albertsons|food lion|harris teeter|wegmans|sprouts|h-?e-?b|winco|meijer|hy-?vee|patel brothers|apna bazar)\b/i],
+  ['Fuel', /\b(fuel|gas station|petro\w*|circle k|costco gas|shell oil|exxon\w*|mobil|chevron|sunoco|valero|marathon|speedway|wawa|sheetz|quik ?trip|racetrac|7-?eleven|casey'?s|murphy ?usa|love'?s travel|pilot|flying j|citgo|phillips 66|conoco|buc-?ee'?s)\b/i],
+  ['Transport', /\b(transit|taxi|metrocard|bike share|marta|metro|tvm)\b/i],
 ];
 
 /**

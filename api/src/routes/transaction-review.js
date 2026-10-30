@@ -13,6 +13,10 @@ import { validate, transactionReviewApproveSchema, transactionReviewBatchSchema,
 import { typeOptions, buildCategoryIndex, categoryOptions } from '../review/review-options.js';
 import { recheck, signFixes } from '../review/recheck.js';
 import { directoryEntryFor, directoryCategory } from '../merchants/directory.js';
+import { flowCategory } from '../parse/categories/flow-category.js';
+
+const FLOW_REASON = { payment: 'A card payment', cashback: 'Cash back', refund: 'A refund', fee: 'A fee', interest: 'Interest', deposit: 'Money in', transfer: 'A transfer', savings: 'Money to savings' };
+const flowReason = (t) => (/zelle/i.test(t.description ?? '') ? 'A Zelle' : FLOW_REASON[t.txn_type] ?? 'Its type');
 import { statementTally } from '../statements/tally.js';
 import { statementHint } from '../statements/statement-hints.js';
 import { findVerification, VERIFICATION_CATEGORY } from '../matching/verification.js';
@@ -117,6 +121,9 @@ function withDirectory(findings, rows, categoryNames) {
   return findings.map((f) => {
     if (f.check_kind !== 'category_missing' || f.suggested_value) return f;
     const t = byId.get(f.transaction_id);
+    // A row that moves money, by what it is (D417); a purchase, by its brand.
+    const flow = flowCategory(t);
+    if (flow && categoryNames.includes(flow)) return { ...f, suggested_value: flow, reason: `${flowReason(t)}, so ${flow}` };
     if ((t.txn_type ?? 'purchase') !== 'purchase') return f;
     const entry = directoryEntryFor(t.merchant, t.description);
     const category = directoryCategory(t.merchant, categoryNames, t.description);

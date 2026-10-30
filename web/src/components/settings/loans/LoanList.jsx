@@ -12,8 +12,9 @@ import { moveSelection } from '../apple/list-keys';
  * balance transfers, then the other loans, each saying what's owed and its
  * clock ("74 days at 0%", amber when a 0% end is close), closed loans folded
  * at the bottom. Cards carrying a balance transfer no loan tracks yet
- * (D194) sit on top as suggestions: Track opens a new loan filled in from
- * the statement, to check before adding; Not a Loan hides it for good.
+ * (D194), and payments that leave the bank for a lender every month (D419),
+ * sit on top as suggestions: Track opens a new loan filled in from the
+ * statement or the payments, to check before adding; Not a Loan hides it for good.
  */
 
 /** A loan's mark: its card when it's on one, else its own matte card (D299). */
@@ -23,14 +24,20 @@ export function LoanMark({ loan, account }) {
 }
 
 function Suggestion({ s, account, busy, onTrack, onDismiss }) {
+  // A loan paid from the bank every month (D419), or a card's balance transfer (D194).
+  const monthly = s.kind === 'installment';
   return (
     <li className="flex items-start gap-3 rounded-[10px] px-3 py-2.5">
-      {account ? <MiniCard account={account} /> : <LoanMark loan={{ loan_type: 'balance_transfer' }} />}
+      {account && !monthly ? <MiniCard account={account} /> : <LoanMark loan={{ loan_type: monthly ? s.loan_type : 'balance_transfer' }} />}
       <div className="min-w-0 flex-1">
-        <p className="text-[15px] leading-snug text-ink">{s.account_name}</p>
+        <p className="text-[15px] leading-snug text-ink">{monthly ? s.lender : s.account_name}</p>
         <p className="text-[13px] leading-snug text-muted">
-          {s.draw_cents ? <><span className="tnum">{formatMoney(s.draw_cents)}</span> balance transfer</> : 'A balance transfer'}
-          {s.end_date ? <>, {aprText(s.apr_bps ?? 0)} until {longDate(s.end_date)}</> : ''}
+          {monthly
+            ? <><span className="tnum">{formatMoney(s.monthly_payment_cents)}</span> a month from {s.account_name}, <span className="tnum">{s.payments}</span> payments since {longDate(s.start_date)}</>
+            : <>
+              {s.draw_cents ? <><span className="tnum">{formatMoney(s.draw_cents)}</span> balance transfer</> : 'A balance transfer'}
+              {s.end_date ? <>, {aprText(s.apr_bps ?? 0)} until {longDate(s.end_date)}</> : ''}
+            </>}
         </p>
         <div className="mt-2 flex gap-2">
           <button type="button" onClick={() => onTrack(s)} disabled={busy}

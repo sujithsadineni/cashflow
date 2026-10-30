@@ -23,3 +23,6 @@ export const EMPTY_LOAN = {
   deadline_date: '',
   linked_account_id: '',
 };
+
+/** A suggested monthly loan's name (D419): "Sample Bank car loan", "Acme Lending loan". */
+export const installmentName = (s) => `${s.lender} ${s.loan_type === 'car' ? 'car loan' : s.loan_type === 'home' ? 'mortgage' : 'loan'}`;

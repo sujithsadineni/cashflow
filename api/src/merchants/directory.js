@@ -7,7 +7,8 @@
  * A household's own history always comes first; this fills what it can't.
  */
 import { readFileSync } from 'node:fs';
-import { descKeys, PREFIX } from './merchant-learning.js'; // one list of payment-processor prefixes
+import { descKeys, PREFIX } from './merchant-learning.js';
+import { subBrand } from './sub-brands.js'; // one list of payment-processor prefixes
 import { lookupMerchantDomain } from '../../../web/src/lib/transactions/merchant-logos.js';
 
 const entries = JSON.parse(readFileSync(new URL('./directory.json', import.meta.url), 'utf8'));
@@ -17,6 +18,8 @@ const byName = new Map(entries.map((e) => [e.merchant.toLowerCase(), e]));
 
 /** The brand a statement line begins with, by its two words then its one, or null. */
 export function directoryMerchant(description) {
+  const product = subBrand(description);
+  if (product) return product;
   const keys = descKeys(description);
   return (keys.two && byKey.get(keys.two)) || (keys.one && byKey.get(keys.one)) || null;
 }
@@ -37,6 +40,9 @@ export function directoryCategory(merchant, categoryNames, description = null) {
  * else a brand its line starts with ("CVS/PHARMACY #1234 …"). Null when it's none of them.
  */
 export function directoryEntryFor(merchant, description = null) {
+  // The line's product first: "Tesla" history still files a Supercharger visit as EV Charging.
+  const product = subBrand(description);
+  if (product) return product;
   if (merchant) {
     const known = byName.get(merchant.toLowerCase()) ?? byDomain.get(lookupMerchantDomain(merchant));
     if (known) return known;

@@ -45,3 +45,23 @@ test('a line read as a merchant the household already has takes its name (D367)'
   assert.equal(knownAs('Harlows', canonical), null, 'too short a name to stand for another');
   assert.equal(knownAs('Wm Supercenter', canonical), null);
 });
+
+test('wallets, processor codes, company suffixes and cut-short words come off; a city follows many shops (D418)', () => {
+  const more = learnCities([...lines, 'LOTUS GROCERY RIVERTON TX', 'DOSA HUT RIVERTON TX', 'CAFE GROCERY RIVERTON TX', 'TAJ GROCERY RIVERTON TX']);
+  assert.ok(more.has('riverton'));
+  assert.ok(!more.has('grocery riverton'), 'Riverton follows many shops, so "grocery riverton" is no city');
+  const cases = [
+    ['SamPay DOSA HUT RIVERTON TX', 'Dosa Hut'],
+    ['SPICY GRILL RIVERTON TX', 'Spicy Grill'],
+    ['SQ *SPICY GRILL FFRiverton TX', 'Spicy Grill Ff'],
+    ['FIV*TEA HOUSE - MAIN4400 MAIN ST RIVERTON TX', 'Tea House'],
+    ['LOTUS HALAL MEAT LLC 0000 RIVERTON TX', 'Lotus Halal Meat'],
+    ['SAMPLE STATE UNIVERS 084870017625 800-555-0100 AR', 'Sample State University'],
+    ['AUTO HAUS IMPORTS RIVERTONTXUSA', 'Auto Haus Imports'],
+    ['CHECKCARD 0822 TEA HOUSE RIVERTON TX', 'Tea House'],
+    ['AMZN Mktp US*8V8JG35R3 Amzn.com/billWAUSA', 'Amazon'],
+    ['ACME LENDING CO I DES:Sam Sample ID: INDN:Sam Sample CO ID:', 'Acme Lending Co'],
+    ['Daily Cash Adjustment · Daily Cash Adjustment · LOTUS GROCERY RIVERTON TX', 'Lotus Grocery'],
+  ];
+  for (const [line, name] of cases) assert.equal(nameFromLine(line, more), name, line);
+});

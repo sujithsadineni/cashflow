@@ -21,6 +21,7 @@ import { audit } from '../core/audit.js';
 import { changesBetween } from '../core/changes.js';
 import { validate, loanCreateSchema, loanUpdateSchema } from '../core/validate.js';
 import { balanceTransferStatus, balanceTransferSuggestions } from '../money/balance-transfer.js';
+import { installmentSuggestions } from '../money/installment-loans.js';
 import { loanPaymentStatus } from '../money/loan-payments.js';
 
 export const loansRouter = Router();
@@ -299,12 +300,26 @@ loansRouter.get('/suggestions', async (req, res, next) => {
     const { rows: loans } = await query('SELECT loan_type, linked_account_id, is_active FROM loan');
     const { rows: [{ today }] } = await query(`SELECT to_char(CURRENT_DATE, 'YYYY-MM-DD') AS today`);
     const facts = await loadCardFacts(cards.map((c) => c.id), today);
-    res.json(balanceTransferSuggestions({
+    const dismissed = await dismissedSuggestions();
+    const transfers = balanceTransferSuggestions({
       cards: cards.map((c) => ({ ...c, ...facts.get(c.id) })),
       loans,
-      dismissed: await dismissedSuggestions(),
+      dismissed,
       today,
-    }));
+    }).map((s) => ({ kind: 'balance_transfer', ...s }));
+    // Loans paid from the bank every month that nobody entered (D419): a car loan's auto draft.
+    const { rows: bank } = await query(
+      `SELECT t.account_id, a.name AS account_name, to_char(t.posted_date, 'YYYY-MM-DD') AS posted_date, t.amount_cents,
+              t.description, t.merchant, t.txn_type, c.name AS category_name,
+              EXISTS (SELECT 1 FROM payment_match_part pp WHERE pp.transaction_id = t.id) AS card_payment
+         FROM transaction t JOIN account a ON a.id = t.account_id LEFT JOIN category c ON c.id = t.category_id
+        WHERE a.account_type IN ('CHECKING', 'SAVINGS') AND t.amount_cents < 0`
+    );
+    const { rows: tracked } = await query('SELECT lender, monthly_payment_cents, payment_account_id FROM loan');
+    // Stopped is measured against the latest bank row, so records that end early don't hide a loan.
+    const latest = bank.reduce((m, r) => (r.posted_date > m ? r.posted_date : m), '');
+    const installments = installmentSuggestions({ rows: bank, loans: tracked, dismissed, today: latest && latest < today ? latest : today });
+    res.json([...transfers, ...installments]);
   } catch (err) {
     next(err);
   }
@@ -313,7 +328,7 @@ loansRouter.get('/suggestions', async (req, res, next) => {
 loansRouter.post('/suggestions/:key/dismiss', async (req, res, next) => {
   try {
     const key = req.params.key;
-    if (!/^\d+:\d{4}-\d{2}-\d{2}$/.test(key)) return res.status(400).json({ error: 'Invalid suggestion key' });
+    if (!/^(\d+:\d{4}-\d{2}-\d{2}|pay:\d+:\d+)$/.test(key)) return res.status(400).json({ error: 'Invalid suggestion key' });
     const dismissed = await dismissedSuggestions();
     if (!dismissed.includes(key)) {
       await query(
@@ -321,7 +336,8 @@ loansRouter.post('/suggestions/:key/dismiss', async (req, res, next) => {
          ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = now()`,
         [DISMISSED_KEY, JSON.stringify([...dismissed, key])]
       );
-      await audit({ action: 'loan.suggestion_dismissed', entityType: 'account', entityId: Number(key.split(':')[0]), detail: { key } });
+      const accountId = Number(key.startsWith('pay:') ? key.split(':')[1] : key.split(':')[0]);
+      await audit({ action: 'loan.suggestion_dismissed', entityType: 'account', entityId: accountId, detail: { key } });
     }
     res.json({ ok: true });
   } catch (err) {

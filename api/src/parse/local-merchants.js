@@ -16,9 +16,14 @@
 // [pattern, cleanName]. Order matters — first match wins, so a more
 // specific pattern (a whole different merchant that happens to start
 // the same way) would need to come first; none currently collide.
+import { subBrand } from '../merchants/sub-brands.js';
+
 const MERCHANT_PATTERNS = [
   [/^WAL-?MART|^WM SUPERCENTER/i, 'Walmart'],
   [/^COSTCO WHSE|^WWW COSTCO COM/i, 'Costco'],
+  [/^AMZN\b|^AMAZON\b/i, 'Amazon'],
+  [/^NIKEPOS|^NIKE\b/i, 'Nike'],
+  [/^COMCAST|^XFINITY/i, 'Xfinity'],
   [/^CINEMARK/i, 'Cinemark'],
   [/^GOOGLE\s?\*/i, 'Google'],
   [/^BP\s?#/i, 'BP'],
@@ -52,6 +57,9 @@ export function cleanMerchantName(description) {
   const d = (description ?? '').trim();
   if (!d) return null;
   if (NO_MERCHANT_PATTERNS.some((p) => p.test(d))) return null;
+  // A brand's product before the brand (D420): "TESLA SUBSCRIPTION" isn't a Supercharger visit.
+  const product = subBrand(d);
+  if (product) return product.merchant;
   for (const [pattern, name] of MERCHANT_PATTERNS) {
     if (pattern.test(d)) return name;
   }

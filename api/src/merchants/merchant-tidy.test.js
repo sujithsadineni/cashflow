@@ -33,11 +33,11 @@ test('a line nobody named is asked about once per name read off it; a name answe
   const rows = [
     row(1, 'AplPay HARLOWS 101 CENTRAL', null), row(2, 'AplPay HARLOWS 202 THE MAL', null),
     row(3, 'MERCHANDISE RETURN', null, 'refund', 900), row(4, 'TST* SWEETS HUT - FAIRVIEW GA', null),
-    row(5, 'Zelle payment from A FRIEND', null, 'deposit', 5000), row(6, 'WM SUPERCENTER #12', null),
+    row(5, 'Zelle payment from A FRIEND', null, 'deposit', 5000), row(6, 'CORNER MKT #12', null),
   ];
-  const p = planTidy(rows, canon([['Wm Supercenter Plus', 2]]), new Set([4]));
+  const p = planTidy(rows, canon([['Corner Market Plus', 2]]), new Set([4]));
   assert.deepEqual(p.flagged.map((f) => [f.id, f.current, f.suggested, f.reason]), [
     [1, null, 'Harlows', 'Read from the statement line (2 lines)'],
-    [6, null, 'Wm Supercenter Plus', 'Read from the statement line'],
+    [6, null, 'Corner Market Plus', 'Read from the statement line'],
   ]);
 });

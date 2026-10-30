@@ -406,7 +406,8 @@ const BRAND_NAMES = {
   chilis: "Chili's", zaxbys: "Zaxby's", 'jersey mikes': "Jersey Mike's", 'jimmy johns': "Jimmy John's", 'papa johns': "Papa John's",
   moes: "Moe's", kohls: "Kohl's", macys: "Macy's", lowes: "Lowe's", 'trader joes': "Trader Joe's", dominos: "Domino's",
   'pf changs': "P.F. Chang's", chickfila: 'Chick-fil-A', sofi: 'SoFi', ihop: 'IHOP', kfc: 'KFC', 'chick fil a': 'Chick-fil-A', 'in n out': 'In-N-Out', 'h mart': 'H Mart',
-  'cook out': 'Cook Out', 'little caesars': 'Little Caesars', 'too good to go': 'Too Good To Go', 'tous les jours': 'Tous Les Jours',
+  'cook out': 'Cook Out', hm: 'H&M', cvs: 'CVS', bofa: 'Bank of America', amc: 'AMC', att: 'AT&T', 'tj maxx': 'TJ Maxx',
+  ikea: 'IKEA', usps: 'USPS', bp: 'BP', ieee: 'IEEE', lkq: 'LKQ', heb: 'H-E-B', 'little caesars': 'Little Caesars', 'too good to go': 'Too Good To Go', 'tous les jours': 'Tous Les Jours',
 };
 export const brandName = (key) => BRAND_NAMES[key] ?? key.replace(/\b[a-z]/g, (c) => c.toUpperCase());
 

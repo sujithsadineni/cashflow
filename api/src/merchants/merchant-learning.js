@@ -25,12 +25,15 @@
  * Pure: history and rows in, a Map(row index → { merchant, how }) out.
  */
 
+import { nameFromLine } from './line-name.js';
+import { subBrand } from './sub-brands.js';
 import { brandAtStart, brandName } from '../../../web/src/lib/transactions/merchant-logos.js'; // one brand list for logos and names
 
 const isZelle = (s) => /zelle/i.test(s ?? '');
 
 // Payment-processor prefixes that sit in front of the real name.
-export const PREFIX = /^(tst\*|sq \*|sq\*|sp \*|sp |aplpay |apple pay |paypal \*|pp\*|py \*|ctlp\*|dd \*|dd\*|bps\*|in \*|pos |pos debit |purchase )/i;
+// Apple's "Daily Cash Adjustment · <shop>" (once or twice) is that shop's (D420).
+export const PREFIX = /^((daily cash adjustment\s*·\s*)+|tst\*|sq \*|sq\*|sp \*|sp |aplpay |apple pay |sampay |samsung pay |gpay |google pay |paypal \*|pp\*|py \*|ctlp\*|dd \*|dd\*|bps\*|in \*|pos |pos debit |purchase )/i;
 
 // First words that say nothing about who was paid.
 const GENERIC = new Set([
@@ -43,6 +46,7 @@ export function descKeys(description) {
   const words = (description ?? '')
     .replace(PREFIX, '')
     .toLowerCase()
+    .replace(/\b([a-z])\s*&\s*([a-z])\b/g, '$1$2') // "H&M", "F&F", "AT&T" keep their letters (D420)
     .replace(/[^a-z0-9]+/g, ' ')
     .split(' ')
     .filter((w) => w.length >= 2 && !/\d/.test(w));
@@ -118,6 +122,10 @@ export function learnMerchants(history, rows, { exactOnly = false } = {}) {
     for (const { key, share, min } of levels) {
       const k = keys[key];
       if (!k || !counts[key].has(k)) continue;
+      // The first word alone only names a line that reads as no more than that word (D420):
+      // "FRONTIER AB12CD DENVER CO" is Frontier, but "LOTUS TEA HOUSE" isn't Lotus Brothers, nor
+      // "DOLLAR GENERAL" Dollar Tree: they read as names of their own.
+      if (key === 'one' && (nameFromLine(r.description) ?? '').split(' ').length > 1) continue;
       const tally = new Map(counts[key].get(k));
       if (self && self.keys[key] === k) tally.set(self.merchant, tally.get(self.merchant) - 1); // never its own evidence
       const total = [...tally.values()].reduce((a, b) => a + b, 0);
@@ -133,8 +141,10 @@ export function learnMerchants(history, rows, { exactOnly = false } = {}) {
     // Never seen, but a brand the app knows ("BURGER KING #27813 …"): named
     // the way history spells that brand, else from the brand list itself.
     if (!out.has(i) && !disputed && !exactOnly) {
+      const product = subBrand(r.description); // a brand's product first (D420): Uber One, not Uber
       const brand = brandAtStart(r.description.replace(PREFIX, ''));
-      if (brand) out.set(i, { merchant: names.byDomain.get(brand.domain) ?? brandName(brand.key), how: 'brand' });
+      if (product) out.set(i, { merchant: product.merchant, how: 'brand' });
+      else if (brand) out.set(i, { merchant: names.byDomain.get(brand.domain) ?? brandName(brand.key), how: 'brand' });
     }
   });
   return out;

@@ -28,7 +28,8 @@ test('the same line, or one that starts the same way, gets the name history gave
   ]);
   assert.deepEqual(got.get(0), { merchant: 'Uber Eats', how: 'exact' });
   assert.deepEqual(got.get(1), { merchant: 'Frontier Airlines', how: 'one' });
-  assert.equal(got.has(2), false); // "uber" alone is Uber and Uber Eats: too ambiguous
+  // "uber" alone is Uber and Uber Eats, too ambiguous; the line names Uber's product itself (D420).
+  assert.deepEqual(got.get(2), { merchant: 'Uber One', how: 'brand' });
   assert.equal(got.has(3), false);
 });
 
@@ -53,3 +54,15 @@ test('exactOnly: the same transfer line takes its name; a similar one does not',
 test('exactOnly never guesses from a known brand at the start of the line', () => {
   assert.equal(learnMerchants([], [{ description: 'CHASE TRANSFER 1234' }], { exactOnly: true }).size, 0);
 });
+
+test('a first word alone never names a line that reads as a name of its own (D420)', () => {
+  const history = [h('LOTUS BROTHERS 0718 RIVERTON TX', 'Lotus Brothers'), h('LOTUS BROTHERS RIVERTONTXUSA', 'Lotus Brothers')];
+  const got = learnMerchants(history, [{ description: 'AplPay LOTUS TEA HOUSE RIVERTON TX' }, { description: 'LOTUS 0718 RIVERTON TX' }]);
+  assert.equal(got.has(0), false);
+  assert.deepEqual(got.get(1), { merchant: 'Lotus Brothers', how: 'one' });
+});
+
+test('H&M keeps its letters in a line\'s keys (D420)', () => {
+  assert.equal(descKeys('H&M 0572 RIVERTON TX').two, 'hm riverton');
+});
+

@@ -23,6 +23,10 @@ import { suggestHistoricalCategories, suggestHistoricalTypes } from '../../revie
 import { verificationCategoryId } from '../transaction-review.js';
 import { learnMerchants } from '../../merchants/merchant-learning.js';
 import { directoryMerchant, directoryCategory } from '../../merchants/directory.js';
+import { lineName, citiesOf } from '../../merchants/merchant-tidy.js';
+import { buildCanonicalMerchants } from '../../review/merchant-review.js';
+import { flowCategory } from '../../parse/categories/flow-category.js';
+import { lenderOf } from '../../money/installment-loans.js';
 import { keywordCategory, certainCategory } from '../../parse/categories/keyword-category.js';
 import { inflowType } from '../../review/inflow-type.js';
 import { balanceTransferDepositFor } from '../../parse/categories/balance-transfer-deposit.js';
@@ -257,6 +261,16 @@ router.post('/:id/parse', async (req, res, next) => {
         const listed = directoryMerchant(row.description);
         if (listed) row.merchant = listed.merchant;
       }
+      // Then a purchase or refund takes the name its own line reads as (D418), or the household's
+      // name for it ("Lotus Grocery" off "AplPay LOTUS GROCERY RIVERTON TX"). The line
+      // stays on the row; a wrong name is renamed once, and every line that reads the same follows.
+      const still = unnamed.filter((r) => !r.merchant);
+      if (still.length > 0) {
+        const { rows: lines } = await query(`SELECT description FROM transaction`);
+        const cities = citiesOf([...lines, ...parsed.rows]);
+        const canonical = await buildCanonicalMerchants({ query });
+        for (const row of still) row.merchant = lineName({ ...row, txn_type: row.txn_type ?? 'purchase' }, cities, canonical) ?? null;
+      }
     }
     const unnamedMoves = parsed.rows.filter((r) => !r.merchant && MOVING.has(r.txn_type));
     if (unnamedMoves.length > 0) {
@@ -317,6 +331,15 @@ router.post('/:id/parse', async (req, res, next) => {
       for (const [index, category] of historical) {
         stillBlank[index].suggested_category = category;
       }
+    }
+
+    // A row that moves money is filed by what it is (D417): a card payment, a Zelle, a refund, pay.
+    for (const row of parsed.rows) {
+      if (row.suggested_category || (row.txn_type ?? 'purchase') === 'purchase' && !/zelle/i.test(row.description ?? '')) continue;
+      const flow = flowCategory(row);
+      if (flow && categoryNames.includes(flow)) row.suggested_category = flow;
+      // A lender's draft is named for the lender (D419), so Recurring sees it as one bill.
+      if (flow === 'Loan' && !row.merchant) row.merchant = lenderOf(row.description);
     }
 
     // A brand's own category from the directory (D401), when the household's history had none:

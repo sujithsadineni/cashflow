@@ -28,7 +28,7 @@ test('a line that says what it is (D337): insurance, a pharmacy, a temple, a sub
   assert.equal(keywordCategory('FLIXBUS 1234'), 'Travel');
   assert.equal(keywordCategory('PREMIUM PARKING SPRINGFIELD'), 'Parking & Tolls', 'parking before any other word');
   assert.equal(keywordCategory('GRACE CHURCH OF SPRINGFIELD'), 'Gifts & Donations');
-  assert.equal(keywordCategory('SPI*POWER CO 528 S CHURCH ST CHARLOTTE'), null, 'a street named Church is an address');
+  assert.equal(keywordCategory('SPI*POWER CO 528 S CHURCH ST CHARLOTTE'), 'Utilities', 'a street named Church is an address, not a donation; a power company is Utilities (D417)');
 });
 
 test('fast food chains and clothing shops have their own categories, ahead of Dining (D342)', () => {

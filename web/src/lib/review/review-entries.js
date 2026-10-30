@@ -16,7 +16,9 @@ const tierOf = (item) => GROUPS[item.check_kind]?.tier ?? 'tidy';
 /**
  * Findings → entries, worst tier first, then newest. Each entry is the
  * transaction (from its first finding) with every finding on it, in field
- * order: amount, type, category.
+ * order: amount, type, category. Labels only goes by shop, the one with the
+ * most rows first (D418): one pick there, with "Also fix the other N", files
+ * the most rows, so a fresh install's backlog goes fastest.
  */
 export function entriesFrom(items) {
   const byTxn = new Map();
@@ -46,8 +48,14 @@ export function entriesFrom(items) {
     e.findings.sort((a, b) => (FIELD_ORDER[a.field] ?? 9) - (FIELD_ORDER[b.field] ?? 9));
     e.tier = e.findings.map(tierOf).sort((a, b) => TIER_ORDER[a] - TIER_ORDER[b])[0];
   }
+  const shop = (e) => (txnName(e) ?? e.description ?? '').toLowerCase();
+  const rowsAt = new Map();
+  for (const e of entries) if (e.tier === 'tidy') rowsAt.set(shop(e), (rowsAt.get(shop(e)) ?? 0) + 1);
+  const byShop = (a, b) => a.tier !== 'tidy' ? 0
+    : rowsAt.get(shop(b)) - rowsAt.get(shop(a)) || shop(a).localeCompare(shop(b));
   return entries.sort(
-    (a, b) => TIER_ORDER[a.tier] - TIER_ORDER[b.tier] || String(b.posted_date).localeCompare(String(a.posted_date)) || a.id - b.id
+    (a, b) => TIER_ORDER[a.tier] - TIER_ORDER[b.tier] || byShop(a, b)
+      || String(b.posted_date).localeCompare(String(a.posted_date)) || a.id - b.id
   );
 }
 

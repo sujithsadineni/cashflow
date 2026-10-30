@@ -14,6 +14,7 @@
     "@anthropic-ai/sdk": "^0.125.0",
     "@napi-rs/canvas": "^1.0.9",
     "express": "^5.1.0",
+    "fastest-levenshtein": "^1.0.16",
     "multer": "^2.3.0",
     "pdfjs-dist": "^6.3.289",
     "pg": "^8.13.1",

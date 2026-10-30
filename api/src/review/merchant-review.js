@@ -25,6 +25,8 @@
  */
 
 import { audit } from '../core/audit.js';
+import { brandAtStart } from '../../../web/src/lib/transactions/merchant-logos.js';
+import { PREFIX } from '../merchants/merchant-learning.js';
 
 const normalize = (s) => (s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const tokenize = (s) => {
@@ -91,7 +93,12 @@ export function matchMerchant(transaction, canonicalMerchants) {
       // Same length floor as the duplicate-cluster check below, for
       // the same reason.
       if (entry.tokens.join('').length < 4) continue;
-      if (containsSubsequence(descTokens, entry.tokens)) matches.push(entry);
+      if (!containsSubsequence(descTokens, entry.tokens)) continue;
+      // A line that begins with another brand isn't this merchant (D420):
+      // "AMERICAN EXPRESS DES:ACH PMT" contains "Express", the clothing store.
+      const lead = brandAtStart(description.replace(PREFIX, ''));
+      if (lead && lead.domain !== brandAtStart(entry.name)?.domain) continue;
+      matches.push(entry);
     }
     if (matches.length === 1) {
       return { action: 'fix', merchant: matches[0].name, reason: `Description contains the existing merchant "${matches[0].name}"` };

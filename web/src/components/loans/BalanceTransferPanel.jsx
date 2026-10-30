@@ -3,6 +3,7 @@ import { api, formatMoney } from '../../api';
 import { useApi } from '../../hooks/use-api';
 import { useDesign } from '../../hooks/use-design';
 import { Button } from '../ui/Form';
+import { installmentName } from '../../lib/loans/loan-form';
 import { aprText, longDate, paceOf, statusLine, warningSentences } from '../../lib/loans/balance-transfer';
 import { useNotify } from '../../hooks/use-notify';
 
@@ -109,9 +110,11 @@ export function BalanceTransferPanel({ loan }) {
 }
 
 /**
- * Cards carrying a balance transfer with no loan tracking it (D194).
- * One click adds the loan, prefilled from the statement; "Not a loan"
- * hides that suggestion for good.
+ * Cards carrying a balance transfer with no loan tracking it (D194), and the
+ * same payment leaving the bank every month for a lender (D419). One click
+ * adds the loan, prefilled from the statement or the payments (a monthly one's
+ * months and balance are added in Settings → Loans); "Not a loan" hides that
+ * suggestion for good.
  */
 export function BalanceTransferSuggestions({ onAdded }) {
   const notify = useNotify();
@@ -129,6 +132,22 @@ export function BalanceTransferSuggestions({ onAdded }) {
   const track = async (s) => {
     setBusy(s.key);
     try {
+      if (s.kind === 'installment') {
+        await api.loans.create({
+          name: installmentName(s),
+          lender: s.lender,
+          loan_type: s.loan_type,
+          start_date: s.start_date,
+          monthly_payment_cents: s.monthly_payment_cents,
+          payment_account_id: s.payment_account_id,
+          // Its months are added later; with them, the balance comes from the payments found (D299).
+          current_balance_cents: 0,
+        });
+        setItems(items.filter((x) => x.key !== s.key));
+        onAdded?.();
+        notify(s.lender, { name: 'loan.added', action: { label: 'Loans', to: '/settings?tab=loans' } });
+        return;
+      }
       await api.loans.create({
         name: `${s.account_name} balance transfer`,
         lender: s.issuer ?? '',
@@ -163,7 +182,19 @@ export function BalanceTransferSuggestions({ onAdded }) {
   return (
     <div className="mb-4 space-y-2">
       {error && <p className="text-sm text-spend">{error}</p>}
-      {(items ?? []).map((s) => (
+      {(items ?? []).map((s) => s.kind === 'installment' ? (
+        <div key={s.key} className={`flex flex-wrap items-center justify-between gap-3 border border-rule p-3 ${vivid ? 'rounded-xl bg-vivid-amber/10' : 'bg-band'}`}>
+          <p className="min-w-0 text-sm text-ink">
+            {vivid ? '🚗 ' : ''}
+            <span className="font-mono tnum">{formatMoney(s.monthly_payment_cents)}</span> goes to {s.lender} from {s.account_name} every month
+            (<span className="tnum">{s.payments}</span> payments since {longDate(s.start_date)}). Is it a loan?
+          </p>
+          <div className="flex shrink-0 gap-2">
+            <Button size="sm" onClick={() => track(s)} disabled={busy === s.key}>Track it</Button>
+            <Button size="sm" variant="quiet" onClick={() => dismiss(s)} disabled={busy === s.key}>Not a loan</Button>
+          </div>
+        </div>
+      ) : (
         <div key={s.key} className={`flex flex-wrap items-center justify-between gap-3 border border-rule p-3 ${vivid ? 'rounded-xl bg-vivid-amber/10' : 'bg-band'}`}>
           <p className="min-w-0 text-sm text-ink">
             {vivid ? '🔄 ' : ''}
