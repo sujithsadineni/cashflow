@@ -1,0 +1,1 @@
+function e(e,t){if(e.key!==`ArrowDown`&&e.key!==`ArrowUp`)return;let n=[...e.currentTarget.querySelectorAll(`button[data-row-id]`)],r=n.indexOf(document.activeElement);if(r<0)return;e.preventDefault();let i=n[Math.min(n.length-1,Math.max(0,r+(e.key===`ArrowDown`?1:-1)))];i.focus(),t(Number(i.dataset.rowId))}export{e as t};
