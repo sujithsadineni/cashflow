@@ -27,7 +27,7 @@ import { keywordCategory, certainCategory } from '../../parse/categories/keyword
 import { inflowType } from '../../review/inflow-type.js';
 import { balanceTransferDepositFor } from '../../parse/categories/balance-transfer-deposit.js';
 import { findVerification, VERIFICATION_CATEGORY } from '../../matching/verification.js';
-import { pickAccountForCard } from '../../statements/account-match.js';
+import { pickAccountForCard, pickAccountByName } from '../../statements/account-match.js';
 import { upsertStatement, relocateStatementFile, REPO_ROOT, duplicateMatchSql, findSameStatement } from './shared.js';
 import { stageOfThrow, readingFacts } from '../../statements/reading-stages.js';
 
@@ -383,10 +383,10 @@ router.post('/:id/parse', async (req, res, next) => {
       // the name alone mustn't pick one of them (or a third) either.
       if (suggestedAccountId === null && !maskTied && detectedAccount.name) {
         const { rows: byName } = await query(
-          'SELECT id FROM account WHERE lower(name) = lower($1)',
+          'SELECT id, mask FROM account WHERE lower(name) = lower($1)',
           [detectedAccount.name]
         );
-        if (byName.length === 1) suggestedAccountId = byName[0].id;
+        suggestedAccountId = pickAccountByName(byName, detectedAccount);
       }
     }
 

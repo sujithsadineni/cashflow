@@ -42,3 +42,12 @@ test('a closed account with the same card gives way to the open one', () => {
   assert.equal(pickAccountForCard([closed, open], { mask: '8765', issuer: 'Barclays', name: 'Samsung Card' }), 9);
   assert.equal(pickAccountForCard([closed], { mask: '8765', issuer: 'Barclays', name: 'Samsung Card' }), 8);
 });
+
+test('a product name never picks an account whose last 4 says it is another one (D409)', async () => {
+  const { pickAccountByName } = await import('./account-match.js');
+  const one = [{ id: 1, mask: '1111' }];
+  assert.equal(pickAccountByName(one, { name: 'Adv SafeBalance Banking', mask: '2222' }), null, 'same name, another account');
+  assert.equal(pickAccountByName(one, { name: 'Adv SafeBalance Banking', mask: null }), 1, 'nothing printed to contradict it');
+  assert.equal(pickAccountByName([{ id: 3, mask: null }], { name: 'X', mask: '2222' }), 3, 'an account with no last 4 yet');
+  assert.equal(pickAccountByName([{ id: 1, mask: null }, { id: 2, mask: null }], { name: 'X', mask: null }), null, 'two alike: ask');
+});

@@ -33,3 +33,16 @@ export function pickAccountForCard(candidates, detected) {
   }
   return hits.length === 1 ? hits[0].id : null;
 }
+
+/**
+ * The account a statement's product name points to, when its last 4 found none (D409). Only an
+ * account whose last 4 can't contradict it: two accounts named alike ("Adv SafeBalance Banking",
+ * one per person) are different accounts once their last 4 differ, and a name alone picked the
+ * wrong one, so a second statement read as "already uploaded".
+ *
+ * candidates: accounts with that name, [{ id, mask }]. Returns an id or null.
+ */
+export function pickAccountByName(candidates, detected) {
+  const fits = candidates.filter((a) => !detected?.mask || !a.mask || a.mask === detected.mask);
+  return fits.length === 1 ? fits[0].id : null;
+}
