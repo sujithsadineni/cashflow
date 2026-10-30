@@ -1,0 +1,47 @@
+import { useEffect, useState } from 'react';
+import { PrivacyContext } from '../hooks/use-privacy';
+import { setGlobalPrivacyMode } from '../api';
+
+/**
+ * The Settings toggle that drives it. A per-browser display
+ * preference (localStorage), not household data — it doesn't belong
+ * in Postgres any more than a sidebar being collapsed would.
+ */
+const STORAGE_KEY = 'cashflow_privacy_mode';
+
+
+export function PrivacyProvider({ children }) {
+  const [privacyMode, setPrivacyModeState] = useState(() => {
+    try {
+      return localStorage.getItem(STORAGE_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+
+  // api.js's formatters read a plain module-level flag, not context
+  // (see the comment on setGlobalPrivacyMode) -- this keeps the two in sync.
+  useEffect(() => {
+    setGlobalPrivacyMode(privacyMode);
+  }, [privacyMode]);
+
+  const setPrivacyMode = (value) => {
+    // Before the state change, not only in the effect: the page Layout
+    // redraws for it (keyed on privacyMode) must format with the new value.
+    setGlobalPrivacyMode(value);
+    setPrivacyModeState(value);
+    try {
+      localStorage.setItem(STORAGE_KEY, value ? '1' : '0');
+    } catch {
+      // Private browsing / blocked storage: the toggle still works
+      // for this session, it just won't be remembered next time.
+    }
+  };
+
+  return (
+    <PrivacyContext.Provider value={{ privacyMode, setPrivacyMode }}>
+      {children}
+    </PrivacyContext.Provider>
+  );
+}
+

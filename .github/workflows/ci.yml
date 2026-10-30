@@ -1,0 +1,34 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: API tests (pg-mem, no database needed)
+        working-directory: api
+        run: npm ci && npm test
+      - name: Web tests
+        working-directory: web
+        run: npm ci && npm test
+      - name: Leak-scan self-tests, and the scan itself (shape and secret checks)
+        run: node --test scripts/ && node scripts/leak-scan.mjs --dir .
+
+# The demo is deployed by `node scripts/publish.mjs --push --pages` as a built
+# gh-pages branch, not from here, so it doesn't depend on Actions minutes.
